@@ -1,9 +1,11 @@
-import "dotenv/config";
-import path from "node:path";
 import dotenv from "dotenv";
+import { resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+import { dirname as dn } from "node:path";
 
-// Load from .env.example specifically
-dotenv.config({ path: path.join(process.cwd(), ".env.example") });
+// Load env vars from .env.example
+const __dirname = dn(fileURLToPath(import.meta.url));
+dotenv.config({ path: resolve(__dirname, "../.env.example") });
 
 // Suppress discord.js deprecation warning about 'ready' -> 'clientReady'
 process.removeAllListeners("warning");
@@ -20,10 +22,7 @@ process.on("warning", (warning) => {
 import { Client, IntentsBitField } from "discord.js";
 import { CommandKit } from "commandkit";
 
-import { dirname as dn } from "node:path";
-import { fileURLToPath } from "node:url";
-
-const dirname = dn(fileURLToPath(import.meta.url));
+const dirname = __dirname;
 
 const client = new Client({
   intents: [IntentsBitField.Flags.Guilds],
