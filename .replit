@@ -1,0 +1,13 @@
+# Replit configuration for Discord Bot
+
+# Language
+language = "nodejs"
+
+# Run command
+run = "npm start"
+
+# Entry point
+entrypoint = "src/index.ts"
+
+# Always on (requires Replit Core subscription)
+# alwaysOn = true

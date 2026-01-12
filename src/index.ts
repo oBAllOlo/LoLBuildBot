@@ -26,6 +26,7 @@ process.on("warning", (warning) => {
 
 import { Client, IntentsBitField } from "discord.js";
 import { CommandKit } from "commandkit";
+import { keepAlive } from "./utils/keepAlive.js";
 
 const dirname = __dirname;
 
@@ -58,5 +59,8 @@ new CommandKit({
   commandsPath: `${dirname}/commands`,
   devGuildIds,
 });
+
+// Start keep-alive server for UptimeRobot
+keepAlive();
 
 client.login(token);
