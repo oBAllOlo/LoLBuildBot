@@ -1,4 +1,9 @@
 import "dotenv/config";
+import path from "node:path";
+import dotenv from "dotenv";
+
+// Load from .env.example specifically
+dotenv.config({ path: path.join(process.cwd(), ".env.example") });
 
 // Suppress discord.js deprecation warning about 'ready' -> 'clientReady'
 process.removeAllListeners("warning");
