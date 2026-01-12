@@ -5,7 +5,11 @@
  * Uses Riot API to find recent matches and extract item builds
  */
 
-import { EmbedBuilder, ApplicationCommandOptionType } from "discord.js";
+import {
+  EmbedBuilder,
+  ApplicationCommandOptionType,
+  AutocompleteInteraction,
+} from "discord.js";
 import type {
   SlashCommandProps,
   CommandOptions,
@@ -18,6 +22,7 @@ import {
   getChampionImageUrl,
   getItemName,
   getRuneName,
+  getAllChampionNames,
 } from "../../utils/ddragon.js";
 import { generateBuildImage } from "../../services/image-gen.js";
 
@@ -31,6 +36,7 @@ export const data: CommandData = {
       description: "ชื่อแชมเปี้ยน (เช่น Yasuo, Lee Sin, Kai'Sa)",
       type: ApplicationCommandOptionType.String,
       required: true,
+      autocomplete: true,
     },
   ],
 };
@@ -195,6 +201,40 @@ export const run = async ({ interaction }: SlashCommandProps) => {
       .setTimestamp();
 
     await interaction.editReply({ content: "", embeds: [errorEmbed] });
+  }
+};
+
+/**
+ * Autocomplete handler for champion name
+ */
+export const autocomplete = async (
+  interaction: AutocompleteInteraction
+): Promise<void> => {
+  const focusedOption = interaction.options.getFocused(true);
+
+  if (focusedOption.name !== "champion") {
+    return;
+  }
+
+  try {
+    const championNames = await getAllChampionNames();
+    const query = focusedOption.value.toLowerCase().trim();
+
+    // Filter champions that match the query
+    const filtered = championNames
+      .filter((name) => name.toLowerCase().includes(query))
+      .slice(0, 25); // Discord autocomplete limit is 25
+
+    await interaction.respond(
+      filtered.map((name) => ({
+        name: name,
+        value: name,
+      }))
+    );
+  } catch (error) {
+    console.error("[Autocomplete] Error:", error);
+    // Return empty response on error
+    await interaction.respond([]);
   }
 };
 

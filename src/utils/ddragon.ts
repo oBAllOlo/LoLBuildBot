@@ -222,6 +222,43 @@ export function getChampionSplashUrl(
 }
 
 /**
+ * Get champion data (name, id, etc)
+ */
+let championCache: Record<string, any> = {};
+let championNamesCache: string[] = [];
+export async function getChampionData(
+  version: string
+): Promise<Record<string, any>> {
+  if (Object.keys(championCache).length > 0) return championCache;
+  try {
+    const { data } = await axios.get(
+      `https://ddragon.leagueoflegends.com/cdn/${version}/data/en_US/champion.json`
+    );
+    championCache = data.data;
+    // Cache champion names list
+    championNamesCache = Object.values(data.data).map(
+      (champ: any) => champ.name
+    );
+    return championCache;
+  } catch (error) {
+    console.error("Error fetching champion data:", error);
+    return {};
+  }
+}
+
+/**
+ * Get all champion names
+ * @param version - Game version (optional, will fetch latest if not provided)
+ * @returns Array of champion names (e.g., ["Aatrox", "Ahri", "Akali", ...])
+ */
+export async function getAllChampionNames(version?: string): Promise<string[]> {
+  if (championNamesCache.length > 0) return championNamesCache;
+  const v = version || (await getLatestVersion());
+  await getChampionData(v);
+  return championNamesCache;
+}
+
+/**
  * Format items array as Discord markdown with images
  * @param version - Game version
  * @param items - Array of item IDs
