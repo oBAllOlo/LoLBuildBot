@@ -20,14 +20,16 @@ import { getLatestVersion } from "../utils/ddragon.js";
 /**
  * Get average build data for a champion
  * @param championName Name of the champion (e.g., "Yasuo")
+ * @param role Optional role filter (e.g., "top", "jungle", "middle", "adc", "support")
  */
 export async function getAverageBuild(
-  championName: string
+  championName: string,
+  role?: string
 ): Promise<ChallengerBuildResponse> {
   try {
     // 1. Try Dynamic Scraper (All Champions)
     const version = await getLatestVersion();
-    const build = await fetchChampionBuild(championName, version);
+    const build = await fetchChampionBuild(championName, version, role);
 
     if (build) {
       // Create standard result from Dynamic Data

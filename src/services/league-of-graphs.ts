@@ -37,12 +37,14 @@ interface LOGBuildData {
 
 export async function fetchChampionBuild(
   champion: string,
-  gameVersion: string
+  gameVersion: string,
+  role?: string
 ): Promise<LOGBuildData | null> {
   const cleanName = champion.toLowerCase().replace(/[^a-z0-9]/g, "");
-  const cachePath = path.join(CACHE_DIR, `${cleanName}.json`);
+  const roleKey = role ? `-${role}` : "";
+  const cachePath = path.join(CACHE_DIR, `${cleanName}${roleKey}.json`);
 
-  console.log(`[Scraper] ⏱️ START fetching ${champion} (v${gameVersion})...`);
+  console.log(`[Scraper] ⏱️ START fetching ${champion}${role ? ` (${role})` : ""} (v${gameVersion})...`);
   const startTime = Date.now();
 
   // 1. Try Cache
@@ -71,7 +73,7 @@ export async function fetchChampionBuild(
       cached.items.boots = cached.items.boots.slice(0, 1);
       cached.items.situational = cached.items.situational.slice(0, 3);
       console.log(
-        `[Scraper] ⚡ Using cached data for ${champion} (v${cached.dataVersion})`
+        `[Scraper] ⚡ Using cached data for ${champion}${role ? ` (${role})` : ""} (v${cached.dataVersion})`
       );
       return cached;
     }
@@ -91,7 +93,9 @@ export async function fetchChampionBuild(
 
   // 2. Fetch
   try {
-    const url = `https://www.leagueofgraphs.com/champions/builds/${cleanName}`;
+    // Build URL with optional role path
+    const roleUrlPart = role ? `/${role}` : "";
+    const url = `https://www.leagueofgraphs.com/champions/builds/${cleanName}${roleUrlPart}`;
     console.log(`[Scraper] 🌐 Requesting ${url}...`);
 
     const { data } = await axios.get(url, {
