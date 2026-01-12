@@ -17,6 +17,10 @@ import type {
 } from "commandkit";
 import { getAverageBuild } from "../../services/scraper.js";
 import {
+  getChallengerBuild,
+  getChallengerBuildAllRegions,
+} from "../../services/riot.js";
+import {
   getLatestVersion,
   getItemImageUrl,
   getChampionImageUrl,
@@ -29,7 +33,7 @@ import { generateBuildImage } from "../../services/image-gen.js";
 /** @type {import('commandkit').CommandData} */
 export const data: CommandData = {
   name: "build",
-  description: "ค้นหา Item Build เฉลี่ย (Average) จากผู้เล่นระดับสูง",
+  description: "ค้นหา Item Build จากผู้เล่นระดับสูง",
   options: [
     {
       name: "champion",
@@ -37,6 +41,22 @@ export const data: CommandData = {
       type: ApplicationCommandOptionType.String,
       required: true,
       autocomplete: true,
+    },
+    {
+      name: "type",
+      description: "ประเภท Build ที่ต้องการ",
+      type: ApplicationCommandOptionType.String,
+      required: false,
+      choices: [
+        {
+          name: "Meta Build (เฉลี่ยจากผู้เล่นระดับสูง)",
+          value: "meta",
+        },
+        {
+          name: "Pro Players Build (จากผู้เล่นมืออาชีพ)",
+          value: "pro",
+        },
+      ],
     },
   ],
 };
@@ -57,6 +77,7 @@ function formatItems(items: number[], version: string): string {
  */
 export const run = async ({ interaction }: SlashCommandProps) => {
   const champion = interaction.options.getString("champion", true);
+  const buildType = interaction.options.getString("type") || "meta";
 
   // Defer reply since scraping may take time
   await interaction.deferReply();
@@ -69,8 +90,17 @@ export const run = async ({ interaction }: SlashCommandProps) => {
       content: `🔍 กำลังดึงข้อมูล Build ของ **${champion}**... (10%)`,
     });
 
-    // Use Scraper (30%)
-    const result = await getAverageBuild(champion);
+    let result;
+    if (buildType === "pro") {
+      // Use Pro Players Build from Riot API
+      await interaction.editReply({
+        content: `🔍 กำลังค้นหา Pro Players Build ของ **${champion}**... (10%)`,
+      });
+      result = await getChallengerBuildAllRegions(champion);
+    } else {
+      // Use Scraper for Meta Build (default)
+      result = await getAverageBuild(champion);
+    }
 
     if (!result.success) {
       const errorEmbed = new EmbedBuilder()
@@ -123,10 +153,10 @@ export const run = async ({ interaction }: SlashCommandProps) => {
     const spell1Name = spellNames[result.summonerSpells.spell1] || "Unknown";
     const spell2Name = spellNames[result.summonerSpells.spell2] || "Unknown";
 
-    // Generate Image
+    // Generate Image (only for Meta builds with buildData)
     let attachment = null;
     try {
-      if (result.buildData) {
+      if (buildType === "meta" && result.buildData) {
         // Progress: 80%
         await interaction.editReply({
           content: `🎨 กำลังสร้างรูป Build ของ **${champion}**... (80%)`,
@@ -148,16 +178,30 @@ export const run = async ({ interaction }: SlashCommandProps) => {
     }
 
     const embed = new EmbedBuilder()
-      .setColor(0x0099ff)
-      .setTitle(`📊 ${result.championName} Build`)
+      .setColor(buildType === "pro" ? 0xffd700 : 0x0099ff)
+      .setTitle(
+        `📊 ${result.championName} Build ${
+          buildType === "pro" ? "🏆 (Pro Player)" : ""
+        }`
+      )
       .setURL(
-        "https://www.leagueofgraphs.com/champions/builds/" +
-          result.championName.toLowerCase()
+        buildType === "pro"
+          ? `https://www.op.gg/champions/${result.championName.toLowerCase()}`
+          : "https://www.leagueofgraphs.com/champions/builds/" +
+              result.championName.toLowerCase()
       )
       .setDescription(
-        `**Role:** ${result.gameMode}\n**Win Rate:** ${
-          result.winRate || "N/A"
-        } • **Pick Rate:** ${result.pickRate || "N/A"}`
+        buildType === "pro" && "playerName" in result
+          ? `**Player:** ${result.playerName} (${result.riotId})\n**Region:** ${
+              result.region
+            }\n**KDA:** ${result.kda.kills}/${result.kda.deaths}/${
+              result.kda.assists
+            } (${result.kda.ratio})\n**Result:** ${
+              result.win ? "✅ Win" : "❌ Loss"
+            } • **Duration:** ${result.gameDuration} min`
+          : `**Role:** ${result.gameMode}\n**Win Rate:** ${
+              result.winRate || "N/A"
+            } • **Pick Rate:** ${result.pickRate || "N/A"}`
       )
       .setThumbnail(getChampionImageUrl(version, result.championName))
       .addFields(
@@ -178,7 +222,11 @@ export const run = async ({ interaction }: SlashCommandProps) => {
         }
       )
       .setFooter({
-        text: `${result.source || "Meta Build"} | LoL v${version}`,
+        text: `${
+          buildType === "pro"
+            ? "Pro Player Build"
+            : result.source || "Meta Build"
+        } | LoL v${version}`,
       })
       .setTimestamp();
 
@@ -210,15 +258,23 @@ export const run = async ({ interaction }: SlashCommandProps) => {
 export const autocomplete = async (
   interaction: AutocompleteInteraction
 ): Promise<void> => {
-  const focusedOption = interaction.options.getFocused(true);
-
-  if (focusedOption.name !== "champion") {
-    return;
-  }
-
   try {
+    // Check if options exists and has getFocused method
+    if (
+      !interaction.options ||
+      typeof interaction.options.getFocused !== "function"
+    ) {
+      console.error(
+        "[Autocomplete] interaction.options.getFocused is not available"
+      );
+      return;
+    }
+
+    // Get the focused option value
+    const focusedValue = interaction.options.getFocused(false) as string;
+    const query = (focusedValue || "").toLowerCase().trim();
+
     const championNames = await getAllChampionNames();
-    const query = focusedOption.value.toLowerCase().trim();
 
     // Filter champions that match the query
     const filtered = championNames
@@ -234,7 +290,11 @@ export const autocomplete = async (
   } catch (error) {
     console.error("[Autocomplete] Error:", error);
     // Return empty response on error
-    await interaction.respond([]);
+    try {
+      await interaction.respond([]);
+    } catch (respondError) {
+      // Ignore if already responded
+    }
   }
 };
 
