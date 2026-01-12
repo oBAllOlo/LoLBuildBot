@@ -3,9 +3,14 @@ import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { dirname as dn } from "node:path";
 
-// Load env vars from .env.example
+// Load env vars from .env (or .env.example as fallback)
 const __dirname = dn(fileURLToPath(import.meta.url));
-dotenv.config({ path: resolve(__dirname, "../.env.example") });
+const envPath = resolve(__dirname, "../.env");
+const envExamplePath = resolve(__dirname, "../.env.example");
+
+// Try .env first, then fallback to .env.example
+dotenv.config({ path: envPath });
+dotenv.config({ path: envExamplePath });
 
 // Suppress discord.js deprecation warning about 'ready' -> 'clientReady'
 process.removeAllListeners("warning");
@@ -39,6 +44,14 @@ console.log(
   }`
 );
 
+// Validate token before initializing CommandKit
+const token = process.env.TOKEN;
+if (!token || typeof token !== 'string' || token.trim() === '') {
+  console.error('[Error] Discord bot token is missing or invalid!');
+  console.error('[Error] Please create a .env file (or .env.example) with TOKEN=your_bot_token');
+  process.exit(1);
+}
+
 new CommandKit({
   client,
   eventsPath: `${dirname}/events`,
@@ -46,4 +59,4 @@ new CommandKit({
   devGuildIds,
 });
 
-client.login(process.env.TOKEN);
+client.login(token);
