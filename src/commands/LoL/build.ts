@@ -45,7 +45,24 @@ export const data: CommandData = {
     },
     {
       name: "role",
+<<<<<<< HEAD
       description: "ตำแหน่งที่ต้องการ (ไม่ระบุ = ตำแหน่งยอดนิยม)",
+=======
+      description: "ตำแหน่งที่ต้องการดู Build",
+      type: ApplicationCommandOptionType.String,
+      required: false,
+      choices: [
+        { name: "🗡️ Top", value: "top" },
+        { name: "🌲 Jungle", value: "jungle" },
+        { name: "🔮 Mid", value: "middle" },
+        { name: "🏹 ADC (Bot)", value: "adc" },
+        { name: "🛡️ Support", value: "support" },
+      ],
+    },
+    {
+      name: "type",
+      description: "ประเภท Build ที่ต้องการ",
+>>>>>>> origin/main
       type: ApplicationCommandOptionType.String,
       required: false,
       choices: [
@@ -75,10 +92,21 @@ function formatItems(items: number[], version: string): string {
  */
 export const run = async ({ interaction }: SlashCommandProps) => {
   const champion = interaction.options.getString("champion", true);
+<<<<<<< HEAD
   const role = interaction.options.getString("role") || undefined; // Optional role
+=======
+  const role = interaction.options.getString("role") || undefined; // Optional role filter
+  const buildType = interaction.options.getString("type") || "meta";
+>>>>>>> origin/main
 
   // Defer reply since scraping may take time
-  await interaction.deferReply();
+  try {
+    await interaction.deferReply();
+  } catch (e) {
+    // Interaction already acknowledged (e.g., bot restarted mid-interaction)
+    console.warn("[Build Command] Interaction already acknowledged, skipping...");
+    return;
+  }
 
   try {
     const version = await getLatestVersion();
@@ -95,8 +123,22 @@ export const run = async ({ interaction }: SlashCommandProps) => {
       content: `🔍 กำลังดึงข้อมูล Build ของ **${champion}**${roleText}... (10%)`,
     });
 
+<<<<<<< HEAD
     // Use Scraper for Meta Build (default)
     const result = await getAverageBuild(champion, role);
+=======
+    let result;
+    if (buildType === "pro") {
+      // Use Pro Players Build from Riot API
+      await interaction.editReply({
+        content: `🔍 กำลังค้นหา Pro Players Build ของ **${champion}**${roleText}... (10%)`,
+      });
+      result = await getChallengerBuildAllRegions(champion);
+    } else {
+      // Use Scraper for Meta Build (default)
+      result = await getAverageBuild(champion, role);
+    }
+>>>>>>> origin/main
 
     if (!result.success) {
       const errorEmbed = new EmbedBuilder()

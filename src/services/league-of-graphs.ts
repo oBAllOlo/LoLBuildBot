@@ -25,19 +25,76 @@ export async function fetchChampionBuild(
   role?: string
 ): Promise<LOGBuildData | null> {
   const cleanName = champion.toLowerCase().replace(/[^a-z0-9]/g, "");
+<<<<<<< HEAD
 
   console.log(
     `[Scraper] ⏱️ START fetching ${champion}${
       role ? ` (${role})` : ""
     } (v${gameVersion})...`
   );
+=======
+  const roleKey = role ? `-${role}` : "";
+  const cachePath = path.join(CACHE_DIR, `${cleanName}${roleKey}.json`);
+
+  console.log(`[Scraper] ⏱️ START fetching ${champion}${role ? ` (${role})` : ""} (v${gameVersion})...`);
+>>>>>>> origin/main
   const startTime = Date.now();
 
   // Fetch
   try {
+<<<<<<< HEAD
     // Build URL with optional role
     const roleSlug = role ? `/${role}` : "";
     const url = `https://www.leagueofgraphs.com/champions/builds/${cleanName}${roleSlug}`;
+=======
+    await ensureCacheDir();
+    const stats = await fs.stat(cachePath);
+    const now = new Date().getTime();
+
+    // Read cache first to check version
+    const data = await fs.readFile(cachePath, "utf-8");
+    const cached = JSON.parse(data);
+
+    // Validate:
+    // 1. 24 Hour TTL
+    // 2. Data Integrity (items exist)
+    // 3. Version Match (if valid version provided)
+    const isFresh = now - stats.mtimeMs < 24 * 60 * 60 * 1000;
+    const isComplete =
+      cached.items && cached.items.starter && cached.items.starter.length > 0;
+    const isVersionMatch = !gameVersion || cached.dataVersion === gameVersion;
+
+    if (isFresh && isComplete && isVersionMatch) {
+      // Sanitize Cached Data
+      cached.items.starter = cached.items.starter.slice(0, 3);
+      cached.items.core = cached.items.core.slice(0, 3);
+      cached.items.boots = cached.items.boots.slice(0, 1);
+      cached.items.situational = cached.items.situational.slice(0, 3);
+      console.log(
+        `[Scraper] ⚡ Using cached data for ${champion}${role ? ` (${role})` : ""} (v${cached.dataVersion})`
+      );
+      return cached;
+    }
+
+    if (!isVersionMatch) {
+      console.log(
+        `[Scraper] 🔄 Cache version mismatch (Cached: ${cached.dataVersion} vs Current: ${gameVersion}). Re-fetching...`
+      );
+    } else if (!isComplete || !isFresh) {
+      console.log(
+        `[Scraper] ⚠️ Cache expired/incomplete for ${champion}, refetching...`
+      );
+    }
+  } catch (e) {
+    // Cache miss
+  }
+
+  // 2. Fetch
+  try {
+    // Build URL with optional role path
+    const roleUrlPart = role ? `/${role}` : "";
+    const url = `https://www.leagueofgraphs.com/champions/builds/${cleanName}${roleUrlPart}`;
+>>>>>>> origin/main
     console.log(`[Scraper] 🌐 Requesting ${url}...`);
 
     const { data } = await axios.get(url, {
