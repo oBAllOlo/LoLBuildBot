@@ -1,56 +1,56 @@
-# LoLBuildBot
+# LoLBuildBot 🏆
 
-Discord bot for League of Legends build recommendations
+Discord Bot สำหรับแนะนำวิธีการออกของ (Build) และข้อมูลต่าง ๆ ในเกม League of Legends
 
-## Features
+## คุณสมบัติ (Features)
 
-- `/build [champion]` - Search for Item Build from high-level players
-- `/ping` - Check if bot is working
-- Keep-Alive Server - Prevent bot from sleeping (works with UptimeRobot)
+- **/build [champion] [role]** - ค้นหาการออกของ (Item Build), รูน (Runes) และเวท (Spells) จากสถิติผู้เล่นระดับสูง (Mobalytics)
+- **/counter [champion]** - ดูแชมเปี้ยนที่ชนะทาง หรือแชมเปี้ยนที่แพ้ทางตัวที่ระบุ
+- **/ping** - ตรวจสอบความเร็วในการตอบสนองของบอท
+- **Multi-Server Support** - รองรับการอัปเดตคำสั่งทันใจในหลาย Server พร้อมกัน
+- **Keep-Alive Server** - ระบบป้องกันบอทหลับ (ทำงานร่วมกับ UptimeRobot)
 
-## Environment Variables
+## การตั้งค่า (Configuration)
 
-### For Local Development:
+### สำหรับการพัฒนาเครื่องส่วนตัว (Local Development):
 
-Create `.env` file in root directory:
+สร้างไฟล์ `.env` ไว้ในโฟลเดอร์หลัก (Root):
 
-```
+```env
 TOKEN=your_discord_bot_token_here
-DEV_GUILD_ID=your_guild_id_here
+DEV_GUILD_IDS=id1,id2,id3
 PORT=8080
 ```
 
-### For Replit:
+_หมายเหตุ: `DEV_GUILD_IDS` สามารถใส่ได้หลาย Server โดยคั่นด้วยเครื่องหมายจุลภาค (comma)_
 
-Use Secrets instead of `.env` file:
+### สำหรับ Replit:
 
-- Go to Secrets -> Add `TOKEN` and `DEV_GUILD_ID`
+ใช้หน้าต่าง **Secrets** แทนไฟล์ `.env`:
 
-## Development
+- เพิ่ม `TOKEN`
+- เพิ่ม `DEV_GUILD_IDS` (ใส่ ID ของ Server ที่ต้องการให้อัปเดตคำสั่งทันที)
+
+## คำสั่งสำหรับนักพัฒนา (Development)
 
 ```bash
-npm install
-npm run dev
-npm start
+npm install     # ติดตั้ง dependency
+npm run dev     # รันบอทในโหมดพัฒนา (auto-reload)
+npm start       # รันบอทตามปกติ
 ```
 
-## Requirements
+## ความต้องการ (Requirements)
 
-- Node.js 18+
+- Node.js 18 ขึ้นไป
 - Discord Bot Token
 
-## Deploy
+## การติดตั้ง (Deployment)
 
 ### Replit
 
-- See [DEPLOY_REPLIT.md](./DEPLOY_REPLIT.md)
-- Free tier will sleep after 5 minutes of inactivity
+- ดูขั้นตอนได้ที่ [DEPLOY_REPLIT.md](./DEPLOY_REPLIT.md)
+- _คำเตือน: Replit รุ่นฟรี บอทจะหลับหากไม่มีการใช้งาน 5 นาที_
 
-### Render
+## ระบบ Keep-Alive & UptimeRobot
 
-- See [DEPLOY_RENDER.md](./DEPLOY_RENDER.md) (if exists)
-- Free tier will sleep after 15 minutes of inactivity
-
-## Keep-Alive & UptimeRobot
-
-Bot has Keep-Alive server built-in! See [UPTIMEROBOT_SETUP.md](./UPTIMEROBOT_SETUP.md) for setup instructions.
+บอทมีระบบ Keep-Alive มาในตัว! ดูวิธีการตั้งค่าเพื่อเปิดบอท 24 ชม. ได้ที่ [UPTIMEROBOT_SETUP.md](./UPTIMEROBOT_SETUP.md)

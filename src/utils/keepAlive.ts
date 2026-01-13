@@ -23,6 +23,14 @@ export function keepAlive() {
       return;
     }
 
+    // Log the incoming ping
+    const timestamp = new Date().toLocaleTimeString();
+    console.log(
+      `[KeepAlive] 📡 Ping received at ${timestamp} (from: ${
+        req.headers["user-agent"] || "Unknown"
+      })`
+    );
+
     // Simple response
     res.writeHead(200, { "Content-Type": "text/plain; charset=utf-8" });
     res.end("I'm still running! Bot is alive! 🤖");
