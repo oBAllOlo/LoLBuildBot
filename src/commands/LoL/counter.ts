@@ -43,7 +43,16 @@ export const data: CommandData = {
 export const run = async ({ interaction }: SlashCommandProps) => {
   const champion = interaction.options.getString("champion", true);
 
-  await interaction.deferReply();
+  // Defer reply since scraping may take time
+  try {
+    await interaction.deferReply();
+  } catch (e) {
+    // Interaction already acknowledged, skip
+    console.warn(
+      "[Counter Command] Interaction already acknowledged, skipping..."
+    );
+    return;
+  }
 
   try {
     const version = await getLatestVersion();
@@ -133,6 +142,11 @@ export const run = async ({ interaction }: SlashCommandProps) => {
 export const autocomplete = async (ctx: any): Promise<void> => {
   const interaction = ctx.interaction as AutocompleteInteraction;
 
+  // Check if already responded
+  if (interaction.responded) {
+    return;
+  }
+
   try {
     if (
       !interaction.options ||
@@ -144,25 +158,35 @@ export const autocomplete = async (ctx: any): Promise<void> => {
     const focusedValue = interaction.options.getFocused(false) as string;
     const query = (focusedValue || "").toLowerCase().trim();
 
+    // If query is too short, return empty
+    if (query.length === 0) {
+      if (!interaction.responded) {
+        await interaction.respond([]);
+      }
+      return;
+    }
+
     const championNames = await getAllChampionNames();
 
     const filtered = championNames
       .filter((name) => name.toLowerCase().includes(query))
       .slice(0, 25);
 
-    await interaction.respond(
-      filtered.map((name) => ({
-        name: name,
-        value: name,
-      }))
-    );
-  } catch (error) {
-    console.error("[Counter Autocomplete] Error:", error);
-    try {
-      await interaction.respond([]);
-    } catch (respondError) {
-      // Ignore
+    // Double check before responding
+    if (!interaction.responded) {
+      await interaction.respond(
+        filtered.map((name) => ({
+          name: name,
+          value: name,
+        }))
+      );
     }
+  } catch (error: any) {
+    // Only log if it's not the "already acknowledged" error
+    if (error?.code !== 40060) {
+      console.error("[Counter Autocomplete] Error:", error);
+    }
+    // Don't try to respond again if already responded
   }
 };
 

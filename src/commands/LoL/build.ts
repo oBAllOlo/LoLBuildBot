@@ -252,25 +252,31 @@ export const autocomplete = async (
 ): Promise<void> => {
   const interaction = ctx.interaction as AutocompleteInteraction;
 
+  // Check if already responded
+  if (interaction.responded) {
+    return;
+  }
+
   try {
     // Check if options exists and has getFocused method
     if (
       !interaction.options ||
       typeof interaction.options.getFocused !== "function"
     ) {
-      fs.appendFileSync(
-        "debug_error.log",
-        `[${new Date().toISOString()}] interaction.options invalid\n`
-      );
-      console.error(
-        "[Autocomplete] interaction.options.getFocused is not available"
-      );
       return;
     }
 
     // Get the focused option value
     const focusedValue = interaction.options.getFocused(false) as string;
     const query = (focusedValue || "").toLowerCase().trim();
+
+    // If query is too short, return empty
+    if (query.length === 0) {
+      if (!interaction.responded) {
+        await interaction.respond([]);
+      }
+      return;
+    }
 
     const championNames = await getAllChampionNames();
 
@@ -279,24 +285,21 @@ export const autocomplete = async (
       .filter((name) => name.toLowerCase().includes(query))
       .slice(0, 25); // Discord autocomplete limit is 25
 
-    await interaction.respond(
-      filtered.map((name) => ({
-        name: name,
-        value: name,
-      }))
-    );
-  } catch (error) {
-    fs.appendFileSync(
-      "debug_error.log",
-      `[${new Date().toISOString()}] Autocomplete caught error: ${error}\n`
-    );
-    console.error("[Autocomplete] Error:", error);
-    // Return empty response on error
-    try {
-      await interaction.respond([]);
-    } catch (respondError) {
-      // Ignore if already responded
+    // Double check before responding
+    if (!interaction.responded) {
+      await interaction.respond(
+        filtered.map((name) => ({
+          name: name,
+          value: name,
+        }))
+      );
     }
+  } catch (error: any) {
+    // Only log if it's not the "already acknowledged" error
+    if (error?.code !== 40060) {
+      console.error("[Autocomplete] Error:", error);
+    }
+    // Don't try to respond again if already responded
   }
 };
 
