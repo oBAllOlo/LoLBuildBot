@@ -105,6 +105,59 @@ export async function getRuneName(
 }
 
 /**
+ * Get Item ID by name (reverse lookup)
+ */
+export async function getItemIdByName(
+  version: string,
+  itemName: string
+): Promise<number> {
+  const data = await getItemData(version);
+  const cleanName = itemName.toLowerCase().trim();
+  for (const [id, item] of Object.entries(data)) {
+    if ((item as any).name.toLowerCase() === cleanName) {
+      return parseInt(id);
+    }
+  }
+  // Partial match fallback
+  for (const [id, item] of Object.entries(data)) {
+    if (
+      (item as any).name.toLowerCase().includes(cleanName) ||
+      cleanName.includes((item as any).name.toLowerCase())
+    ) {
+      return parseInt(id);
+    }
+  }
+  return 0;
+}
+
+/**
+ * Get Rune ID by name (keystone/style name)
+ */
+export async function getRuneIdByName(
+  version: string,
+  runeName: string
+): Promise<number> {
+  const data = await getRuneData(version);
+  const cleanName = runeName.toLowerCase().trim();
+
+  for (const tree of data) {
+    // Check tree name
+    if (tree.name.toLowerCase() === cleanName) {
+      return tree.id;
+    }
+    // Check runes in slots
+    for (const slot of tree.slots) {
+      for (const rune of slot.runes) {
+        if (rune.name.toLowerCase() === cleanName) {
+          return rune.id;
+        }
+      }
+    }
+  }
+  return 0;
+}
+
+/**
  * Get the URL for an item's image
  * @param version - Game version (e.g., "14.1.1")
  * @param itemId - Item ID number

@@ -1,92 +1,95 @@
 /**
  * Build Scraper Service
  *
- * Uses static build database for reliable data
- * Falls back to returning error if champion not found
+ * Uses Mobalytics for build data - extracts IDs directly from __PRELOADED_STATE__
  */
 import {
   ChallengerBuildResult,
   ChallengerBuildResponse,
 } from "../types/riot.js";
 
-import { fetchChampionBuild } from "./league-of-graphs.js";
+import { fetchMobalyticsBuild } from "./mobalytics.js";
 import {
   getAvailableChampions as getStaticChampions,
   hasChampion as hasStaticChampion,
 } from "../data/builds.js";
 
-import { getLatestVersion } from "../utils/ddragon.js";
-
 /**
  * Get average build data for a champion
  * @param championName Name of the champion (e.g., "Yasuo")
+ * @param role Optional role filter (currently not used - Mobalytics returns popular role)
  */
 export async function getAverageBuild(
-  championName: string
+  championName: string,
+  role?: string
 ): Promise<ChallengerBuildResponse> {
   try {
-    // 1. Try Dynamic Scraper (All Champions)
-    const version = await getLatestVersion();
-    const build = await fetchChampionBuild(championName, version);
+    const build = await fetchMobalyticsBuild(championName, role);
 
-    if (build) {
-      // Create standard result from Dynamic Data
+    if (
+      build.success &&
+      (build.items.core.length > 0 || build.runes.perks.length > 0)
+    ) {
+      // Create standard result from Mobalytics Data
       const result: ChallengerBuildResult = {
         success: true,
-        playerName: "LeagueOfGraphs",
-        riotId: build.role, // Use role as Riot ID placeholder
+        playerName: "Mobalytics",
+        riotId: build.role,
         region: "Global",
-        championName: championName, // Use input name (or clean it)
+        championName: championName,
         championId: 0,
-        items: [...build.items.core, ...build.items.boots].slice(0, 6), // Core + Boots for text display (starter hidden - has wards)
+        items: build.items.core,
+        earlyItems: build.items.early,
         runes: {
-          primaryStyle: build.runes.primary,
-          primarySelections: [],
-          secondaryStyle: build.runes.secondary,
-          secondarySelections: [],
-          statPerks: { offense: 0, flex: 0, defense: 0 },
+          primaryStyle: build.runes.primaryTree,
+          primarySelections: build.runes.perks
+            .slice(0, 4)
+            .map((id) => ({ perk: id } as any)),
+          secondaryStyle: build.runes.secondaryTree,
+          secondarySelections: build.runes.perks
+            .slice(4, 6)
+            .map((id) => ({ perk: id } as any)),
+          statPerks: {
+            offense: build.runes.perks[6] || 0,
+            flex: build.runes.perks[7] || 0,
+            defense: build.runes.perks[8] || 0,
+          },
         },
         summonerSpells: {
           spell1: build.spells[0] || 4,
-          spell2: build.spells[1] || 7,
+          spell2: build.spells[1] || 12,
         },
         kda: { kills: 0, deaths: 0, assists: 0, ratio: "N/A" },
         win: true,
         gameMode: build.role,
         gameDuration: 0,
         winRate: build.winRate,
-        pickRate: build.pickRate,
-        source: "LeagueOfGraphs",
-        // Pass structure expected by Visualizer
+        pickRate: "N/A",
+        source: "Mobalytics",
         buildData: {
           championName: championName,
           role: build.role,
           startingItems: build.items.starter,
-          boots: build.items.boots[0] || 0,
+          boots: build.items.boots,
           coreItems: build.items.core,
           situationalItems: build.items.situational,
-          runesPrimary: build.runes.primary,
-          runesSecondary: build.runes.secondary,
+          runesPrimary: build.runes.primaryTree,
+          runesSecondary: build.runes.secondaryTree,
           perks: build.runes.perks,
           summonerSpell1: build.spells[0] || 4,
-          summonerSpell2: build.spells[1] || 7,
+          summonerSpell2: build.spells[1] || 12,
           winRate: build.winRate,
-          pickRate: build.pickRate,
-          source: "LeagueOfGraphs",
+          pickRate: "N/A",
+          source: "Mobalytics",
         },
         perks: build.runes.perks,
       };
       return result;
     }
 
-    // 2. Fallback to Static DB (if scraper fails or network issue)
-    // ... (Keep existing static logic as fallback if desired, or remove?)
-    // Removing static fallback to encourage fixing scraper, or keeping it?
-    // Let's return error if dynamic failed, claiming "Not Found".
-
     return {
       success: false,
-      error: `ไม่พบข้อมูล Build สำหรับ "${championName}" (หรือระบบดึงข้อมูลมีปัญหา)\nลองตรวจสอบชื่อตัวละครใหม่ครับ`,
+      error: build.error || `ไม่พบข้อมูล Build สำหรับ "${championName}"`,
     };
   } catch (error) {
     console.error("[Scraper] Error:", error);
@@ -97,9 +100,7 @@ export async function getAverageBuild(
   }
 }
 
-// Re-export static utils if needed by commands (e.g. autocomplete)
-// But autocomplete should ideally use cache or standard list.
-// For now, keep static export for compatibility.
+// Re-export static utils
 export {
   getStaticChampions as getAvailableChampions,
   hasStaticChampion as hasChampion,

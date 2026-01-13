@@ -11,7 +11,7 @@ import {
 } from "../utils/ddragon.js";
 
 const CANVAS_WIDTH = 1200;
-const CANVAS_HEIGHT = 800;
+const CANVAS_HEIGHT = 1000; // Increased height for 4-row layout
 const PADDING = 30;
 
 /**
@@ -141,36 +141,71 @@ export async function generateBuildImage(
     };
 
     const LEFT_COL_X = 50;
-    const START_Y = HEADER_H + 50;
+    const ITEM_Y_START = HEADER_H + 40;
+    const COL_WIDTH = 270; // Width per column in the layout grid
 
-    // Parallelize ALL item sections and spells
+    // Define sections with their positions
+    // Layout: 2x2 Grid for Items
+    // Row 1: Starter (Left), Early (Right)
+    // Row 2: Core (Left), Full Build (Right)
+    // Wait, user image shows all in one column?
+    // User image shows:
+    // Starter Items
+    // [Items]
+    // Early Items
+    // [Items]
+    // Core Items
+    // [Items]
+    // Full Build
+    // [Items]
+    // All in one vertical stack?
+    // Re-checking user image...
+    // The user image shows:
+    // Left side: Items (User uploaded image 2)
+    // Starter Items -> Early Items -> Core Items -> Full Build
+    // All vertically stacked on the left side.
+
+    // Let's implement vertical stack on the left side as per Mobalytics standard
+
+    // Vertical spacing
+    const SECTION_GAP = 100;
+
     await Promise.all([
+      // 1. Starter Items
       drawItemSection(
-        "Starting Items",
+        "Starter Items",
         buildData.startingItems,
         LEFT_COL_X,
-        START_Y
+        ITEM_Y_START
       ),
-      drawItemSection("Boots", [buildData.boots], LEFT_COL_X + 300, START_Y),
+      // 2. Early Items
       drawItemSection(
-        "Core Build",
+        "Early Items",
+        buildData.earlyItems,
+        LEFT_COL_X,
+        ITEM_Y_START + SECTION_GAP
+      ),
+      // 3. Core Items
+      drawItemSection(
+        "Core Items",
         buildData.coreItems,
         LEFT_COL_X,
-        START_Y + 140,
-        80
+        ITEM_Y_START + SECTION_GAP * 2,
+        64 // scale
       ),
+      // 4. Full Build (was Situational)
       drawItemSection(
-        "Situational Items",
+        "Full Build",
         buildData.situationalItems,
         LEFT_COL_X,
-        START_Y + 280
+        ITEM_Y_START + SECTION_GAP * 3.5 // Give more space for Core if needed
       ),
     ]);
 
     // Summoner Spells (Bottom Left)
     ctx.fillStyle = "#c8aa6e";
     ctx.font = "bold 24px Sans";
-    ctx.fillText("Summoner Spells", LEFT_COL_X, START_Y + 400);
+    ctx.fillText("Summoner Spells", LEFT_COL_X, ITEM_Y_START + 500);
 
     const [spell1, spell2] = await Promise.all([
       getSummonerSpellImageUrl(version, buildData.summonerSpell1),
@@ -185,9 +220,17 @@ export async function generateBuildImage(
     };
 
     await Promise.all([
-      drawSpell(spell1, LEFT_COL_X, START_Y + 420),
-      drawSpell(spell2, LEFT_COL_X + 80, START_Y + 420),
+      drawSpell(spell1, LEFT_COL_X, ITEM_Y_START + 530),
+      drawSpell(spell2, LEFT_COL_X + 80, ITEM_Y_START + 530),
     ]);
+
+    // Boots (Next to Starter)
+    await drawItemSection(
+      "Boots",
+      [buildData.boots],
+      LEFT_COL_X + 300, // Offset to right of Starter
+      ITEM_Y_START
+    );
 
     // ================= RIGHT PANEL: RUNES =================
     const RUNE_START_X = SEPARATOR_X + 50;

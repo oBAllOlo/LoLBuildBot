@@ -43,6 +43,19 @@ export const data: CommandData = {
       required: true,
       autocomplete: true,
     },
+    {
+      name: "role",
+      description: "ตำแหน่งที่ต้องการ (ไม่ระบุ = ตำแหน่งยอดนิยม)",
+      type: ApplicationCommandOptionType.String,
+      required: false,
+      choices: [
+        { name: "🗡️ Top", value: "top" },
+        { name: "🌲 Jungle", value: "jungle" },
+        { name: "🔮 Mid", value: "middle" },
+        { name: "🏹 ADC", value: "adc" },
+        { name: "🛡️ Support", value: "support" },
+      ],
+    },
   ],
 };
 
@@ -62,7 +75,7 @@ function formatItems(items: number[], version: string): string {
  */
 export const run = async ({ interaction }: SlashCommandProps) => {
   const champion = interaction.options.getString("champion", true);
-  const buildType = "meta"; // Forced to meta
+  const role = interaction.options.getString("role") || undefined; // Optional role
 
   // Defer reply since scraping may take time
   await interaction.deferReply();
@@ -70,13 +83,20 @@ export const run = async ({ interaction }: SlashCommandProps) => {
   try {
     const version = await getLatestVersion();
 
+    console.log(
+      `[Command] /build input - Champion: "${champion}", Role: "${
+        role || "Auto"
+      }"`
+    );
+
     // Progress: 10%
+    const roleText = role ? ` (${role.toUpperCase()})` : "";
     await interaction.editReply({
-      content: `🔍 กำลังดึงข้อมูล Build ของ **${champion}**... (10%)`,
+      content: `🔍 กำลังดึงข้อมูล Build ของ **${champion}**${roleText}... (10%)`,
     });
 
     // Use Scraper for Meta Build (default)
-    const result = await getAverageBuild(champion);
+    const result = await getAverageBuild(champion, role);
 
     if (!result.success) {
       const errorEmbed = new EmbedBuilder()
@@ -157,8 +177,15 @@ export const run = async ({ interaction }: SlashCommandProps) => {
       .setColor(0x0099ff)
       .setTitle(`📊 ${result.championName} Build`)
       .setURL(
-        "https://www.leagueofgraphs.com/champions/builds/" +
-          result.championName.toLowerCase()
+        `https://mobalytics.gg/lol/champions/${result.championName.toLowerCase()}/build${
+          result.gameMode && result.gameMode !== "Popular"
+            ? "/" +
+              result.gameMode
+                .toLowerCase()
+                .replace("middle", "mid")
+                .replace("bot", "adc")
+            : ""
+        }`
       )
       .setDescription(
         `**Role:** ${result.gameMode}\n**Win Rate:** ${
