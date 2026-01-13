@@ -12,6 +12,7 @@
 
 import axios from "axios";
 import * as cheerio from "cheerio";
+import { mobalyticsLimiter, waitIfRateLimited } from "../utils/rateLimiter.js";
 
 // Build Data Interface
 export interface MobalyticsBuildData {
@@ -283,6 +284,9 @@ export async function fetchMobalyticsBuild(
   console.log(`[Mobalytics] 🌐 Fetching build from ${url}...`);
 
   try {
+    // Apply rate limiting
+    await waitIfRateLimited(mobalyticsLimiter, "mobalytics");
+
     const { data: html } = await axios.get(url, {
       headers: {
         "User-Agent":
@@ -354,6 +358,9 @@ export async function fetchMobalyticsCounters(
   console.log(`[Mobalytics] 🌐 Fetching counters from ${url}...`);
 
   try {
+    // Apply rate limiting
+    await waitIfRateLimited(mobalyticsLimiter, "mobalytics");
+
     const { data: html } = await axios.get(url, {
       headers: {
         "User-Agent":

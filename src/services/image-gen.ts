@@ -1,6 +1,7 @@
 import { createCanvas, loadImage } from "@napi-rs/canvas";
 import { AttachmentBuilder } from "discord.js";
 import axios from "axios";
+import { readFileSync } from "fs";
 import {
   getLatestVersion,
   getItemImageUrl,
@@ -9,6 +10,10 @@ import {
   getRuneImageUrl,
   getRuneData,
 } from "../utils/ddragon.js";
+import {
+  hasCachedImage,
+  saveImageToCache,
+} from "../utils/imageCache.js";
 
 const CANVAS_WIDTH = 1200;
 const CANVAS_HEIGHT = 1000; // Increased height for 4-row layout
@@ -26,6 +31,20 @@ export async function generateBuildImage(
   try {
     const startTime = Date.now();
     console.log(`[ImageGen] 🎨 Starting generation for ${championName}...`);
+
+    // Check cache first
+    const cachedPath = hasCachedImage(
+      championName,
+      stats.role,
+      version,
+      buildData
+    );
+    if (cachedPath) {
+      console.log(`[ImageGen] 💾 Using cached image for ${championName}`);
+      const buffer = readFileSync(cachedPath);
+      return new AttachmentBuilder(buffer, { name: "build-summary.png" });
+    }
+
     const canvas = createCanvas(CANVAS_WIDTH, CANVAS_HEIGHT);
     const ctx = canvas.getContext("2d");
 
@@ -520,6 +539,10 @@ export async function generateBuildImage(
     const elapsed = Date.now() - startTime;
     console.log(`[ImageGen] ✅ Image generated in ${elapsed}ms`);
     const buffer = await canvas.encode("png");
+
+    // Save to cache
+    saveImageToCache(championName, stats.role, version, buildData, buffer);
+
     return new AttachmentBuilder(buffer, { name: "build-summary.png" });
   } catch (error) {
     console.error("Image generation failed:", error);

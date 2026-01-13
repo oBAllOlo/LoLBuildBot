@@ -69,9 +69,13 @@ new CommandKit({
 });
 
 import { getAllChampionNames } from "./utils/ddragon.js";
+import { cleanOldCache } from "./utils/imageCache.js";
 
 // Start keep-alive server for UptimeRobot
 keepAlive();
+
+// Clean old cache files on startup
+cleanOldCache();
 
 // Pre-warm cache
 console.log("[System] Pre-warming DDragon cache...");

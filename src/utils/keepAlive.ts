@@ -23,6 +23,23 @@ export function keepAlive() {
       return;
     }
 
+    // Health check endpoint
+    if (req.url === "/health") {
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(
+        JSON.stringify({
+          status: "ok",
+          uptime: Math.floor(process.uptime()),
+          timestamp: new Date().toISOString(),
+          memory: {
+            used: Math.round(process.memoryUsage().heapUsed / 1024 / 1024),
+            total: Math.round(process.memoryUsage().heapTotal / 1024 / 1024),
+          },
+        })
+      );
+      return;
+    }
+
     // Log the incoming ping
     const timestamp = new Date().toLocaleTimeString();
     console.log(
