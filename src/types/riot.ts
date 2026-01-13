@@ -138,6 +138,7 @@ export interface ChallengerBuildResult {
   championName: string;
   championId: number;
   items: number[];
+  earlyItems?: number[]; // Added for Mobalytics alignment
   runes: {
     primaryStyle: number;
     primarySelections: number[];

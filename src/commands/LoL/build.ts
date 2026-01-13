@@ -10,6 +10,7 @@ import {
   ApplicationCommandOptionType,
   AutocompleteInteraction,
 } from "discord.js";
+import fs from "fs";
 import type {
   SlashCommandProps,
   CommandOptions,
@@ -44,6 +45,9 @@ export const data: CommandData = {
     },
     {
       name: "role",
+<<<<<<< HEAD
+      description: "ตำแหน่งที่ต้องการ (ไม่ระบุ = ตำแหน่งยอดนิยม)",
+=======
       description: "ตำแหน่งที่ต้องการดู Build",
       type: ApplicationCommandOptionType.String,
       required: false,
@@ -58,17 +62,15 @@ export const data: CommandData = {
     {
       name: "type",
       description: "ประเภท Build ที่ต้องการ",
+>>>>>>> origin/main
       type: ApplicationCommandOptionType.String,
       required: false,
       choices: [
-        {
-          name: "Meta Build (เฉลี่ยจากผู้เล่นระดับสูง)",
-          value: "meta",
-        },
-        {
-          name: "Pro Players Build (จากผู้เล่นมืออาชีพ)",
-          value: "pro",
-        },
+        { name: "🗡️ Top", value: "top" },
+        { name: "🌲 Jungle", value: "jungle" },
+        { name: "🔮 Mid", value: "middle" },
+        { name: "🏹 ADC", value: "adc" },
+        { name: "🛡️ Support", value: "support" },
       ],
     },
   ],
@@ -90,8 +92,12 @@ function formatItems(items: number[], version: string): string {
  */
 export const run = async ({ interaction }: SlashCommandProps) => {
   const champion = interaction.options.getString("champion", true);
+<<<<<<< HEAD
+  const role = interaction.options.getString("role") || undefined; // Optional role
+=======
   const role = interaction.options.getString("role") || undefined; // Optional role filter
   const buildType = interaction.options.getString("type") || "meta";
+>>>>>>> origin/main
 
   // Defer reply since scraping may take time
   try {
@@ -105,12 +111,22 @@ export const run = async ({ interaction }: SlashCommandProps) => {
   try {
     const version = await getLatestVersion();
 
+    console.log(
+      `[Command] /build input - Champion: "${champion}", Role: "${
+        role || "Auto"
+      }"`
+    );
+
     // Progress: 10%
     const roleText = role ? ` (${role.toUpperCase()})` : "";
     await interaction.editReply({
       content: `🔍 กำลังดึงข้อมูล Build ของ **${champion}**${roleText}... (10%)`,
     });
 
+<<<<<<< HEAD
+    // Use Scraper for Meta Build (default)
+    const result = await getAverageBuild(champion, role);
+=======
     let result;
     if (buildType === "pro") {
       // Use Pro Players Build from Riot API
@@ -122,6 +138,7 @@ export const run = async ({ interaction }: SlashCommandProps) => {
       // Use Scraper for Meta Build (default)
       result = await getAverageBuild(champion, role);
     }
+>>>>>>> origin/main
 
     if (!result.success) {
       const errorEmbed = new EmbedBuilder()
@@ -177,7 +194,7 @@ export const run = async ({ interaction }: SlashCommandProps) => {
     // Generate Image (only for Meta builds with buildData)
     let attachment = null;
     try {
-      if (buildType === "meta" && result.buildData) {
+      if (result.buildData) {
         // Progress: 80%
         await interaction.editReply({
           content: `🎨 กำลังสร้างรูป Build ของ **${champion}**... (80%)`,
@@ -199,30 +216,23 @@ export const run = async ({ interaction }: SlashCommandProps) => {
     }
 
     const embed = new EmbedBuilder()
-      .setColor(buildType === "pro" ? 0xffd700 : 0x0099ff)
-      .setTitle(
-        `📊 ${result.championName} Build ${
-          buildType === "pro" ? "🏆 (Pro Player)" : ""
+      .setColor(0x0099ff)
+      .setTitle(`📊 ${result.championName} Build`)
+      .setURL(
+        `https://mobalytics.gg/lol/champions/${result.championName.toLowerCase()}/build${
+          result.gameMode && result.gameMode !== "Popular"
+            ? "/" +
+              result.gameMode
+                .toLowerCase()
+                .replace("middle", "mid")
+                .replace("bot", "adc")
+            : ""
         }`
       )
-      .setURL(
-        buildType === "pro"
-          ? `https://www.op.gg/champions/${result.championName.toLowerCase()}`
-          : "https://www.leagueofgraphs.com/champions/builds/" +
-              result.championName.toLowerCase()
-      )
       .setDescription(
-        buildType === "pro" && "playerName" in result
-          ? `**Player:** ${result.playerName} (${result.riotId})\n**Region:** ${
-              result.region
-            }\n**KDA:** ${result.kda.kills}/${result.kda.deaths}/${
-              result.kda.assists
-            } (${result.kda.ratio})\n**Result:** ${
-              result.win ? "✅ Win" : "❌ Loss"
-            } • **Duration:** ${result.gameDuration} min`
-          : `**Role:** ${result.gameMode}\n**Win Rate:** ${
-              result.winRate || "N/A"
-            } • **Pick Rate:** ${result.pickRate || "N/A"}`
+        `**Role:** ${result.gameMode}\n**Win Rate:** ${
+          result.winRate || "N/A"
+        } • **Pick Rate:** ${result.pickRate || "N/A"}`
       )
       .setThumbnail(getChampionImageUrl(version, result.championName))
       .addFields(
@@ -243,11 +253,7 @@ export const run = async ({ interaction }: SlashCommandProps) => {
         }
       )
       .setFooter({
-        text: `${
-          buildType === "pro"
-            ? "Pro Player Build"
-            : result.source || "Meta Build"
-        } | LoL v${version}`,
+        text: `${result.source || "Meta Build"} | LoL v${version}`,
       })
       .setTimestamp();
 
@@ -276,15 +282,22 @@ export const run = async ({ interaction }: SlashCommandProps) => {
 /**
  * Autocomplete handler for champion name
  */
+// CommandKit passes an object with { interaction, client, handler }
 export const autocomplete = async (
-  interaction: AutocompleteInteraction
+  ctx: any // Untyped or specific CommandKit type
 ): Promise<void> => {
+  const interaction = ctx.interaction as AutocompleteInteraction;
+
   try {
     // Check if options exists and has getFocused method
     if (
       !interaction.options ||
       typeof interaction.options.getFocused !== "function"
     ) {
+      fs.appendFileSync(
+        "debug_error.log",
+        `[${new Date().toISOString()}] interaction.options invalid\n`
+      );
       console.error(
         "[Autocomplete] interaction.options.getFocused is not available"
       );
@@ -309,6 +322,10 @@ export const autocomplete = async (
       }))
     );
   } catch (error) {
+    fs.appendFileSync(
+      "debug_error.log",
+      `[${new Date().toISOString()}] Autocomplete caught error: ${error}\n`
+    );
     console.error("[Autocomplete] Error:", error);
     // Return empty response on error
     try {

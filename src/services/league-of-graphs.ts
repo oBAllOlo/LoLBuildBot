@@ -1,20 +1,5 @@
 import axios from "axios";
 import * as cheerio from "cheerio";
-import fs from "fs/promises";
-import path from "path";
-import { fileURLToPath } from "url";
-
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const CACHE_DIR = path.join(__dirname, "../../data/cache");
-
-// Ensure cache directory exists
-async function ensureCacheDir() {
-  try {
-    await fs.mkdir(CACHE_DIR, { recursive: true });
-  } catch (e) {
-    // ignore
-  }
-}
 
 interface LOGBuildData {
   role: string;
@@ -32,7 +17,6 @@ interface LOGBuildData {
     perks: number[];
   };
   spells: number[];
-  dataVersion?: string; // Cache version
 }
 
 export async function fetchChampionBuild(
@@ -41,14 +25,28 @@ export async function fetchChampionBuild(
   role?: string
 ): Promise<LOGBuildData | null> {
   const cleanName = champion.toLowerCase().replace(/[^a-z0-9]/g, "");
+<<<<<<< HEAD
+
+  console.log(
+    `[Scraper] ⏱️ START fetching ${champion}${
+      role ? ` (${role})` : ""
+    } (v${gameVersion})...`
+  );
+=======
   const roleKey = role ? `-${role}` : "";
   const cachePath = path.join(CACHE_DIR, `${cleanName}${roleKey}.json`);
 
   console.log(`[Scraper] ⏱️ START fetching ${champion}${role ? ` (${role})` : ""} (v${gameVersion})...`);
+>>>>>>> origin/main
   const startTime = Date.now();
 
-  // 1. Try Cache
+  // Fetch
   try {
+<<<<<<< HEAD
+    // Build URL with optional role
+    const roleSlug = role ? `/${role}` : "";
+    const url = `https://www.leagueofgraphs.com/champions/builds/${cleanName}${roleSlug}`;
+=======
     await ensureCacheDir();
     const stats = await fs.stat(cachePath);
     const now = new Date().getTime();
@@ -96,6 +94,7 @@ export async function fetchChampionBuild(
     // Build URL with optional role path
     const roleUrlPart = role ? `/${role}` : "";
     const url = `https://www.leagueofgraphs.com/champions/builds/${cleanName}${roleUrlPart}`;
+>>>>>>> origin/main
     console.log(`[Scraper] 🌐 Requesting ${url}...`);
 
     const { data } = await axios.get(url, {
@@ -299,11 +298,6 @@ export async function fetchChampionBuild(
       console.log(`[Scraper] ✨ Spells found: ${result.spells.join(", ")}`);
     }
 
-    // 3. Save Cache
-    result.dataVersion = gameVersion;
-    await ensureCacheDir();
-    await fs.writeFile(cachePath, JSON.stringify(result, null, 2));
-
     const elapsed = Date.now() - startTime;
     console.log(
       `[Scraper] ✅ DONE in ${elapsed}ms - Items: ${result.items.starter.length}/${result.items.core.length}/${result.items.boots.length}`
@@ -312,5 +306,114 @@ export async function fetchChampionBuild(
   } catch (error) {
     console.error(`[Scraper] ❌ Failed to fetch ${champion}:`, error);
     return null;
+  }
+}
+
+// Counter Data Interface
+interface CounterMatchup {
+  name: string;
+  winRate: string;
+}
+
+interface CounterData {
+  success: boolean;
+  championName: string;
+  winsAgainst?: CounterMatchup[];
+  losesAgainst?: CounterMatchup[];
+  error?: string;
+}
+
+/**
+ * Fetch counter matchup data for a champion
+ */
+export async function fetchCounterData(champion: string): Promise<CounterData> {
+  const cleanName = champion.toLowerCase().replace(/[^a-z0-9]/g, "");
+  const url = `https://www.leagueofgraphs.com/champions/counters/${cleanName}`;
+
+  console.log(`[Counter] 🌐 Requesting ${url}...`);
+
+  try {
+    const { data } = await axios.get(url, {
+      headers: {
+        "User-Agent":
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+      },
+    });
+
+    const $ = cheerio.load(data);
+
+    const winsAgainst: CounterMatchup[] = [];
+    const losesAgainst: CounterMatchup[] = [];
+
+    // Find sections by header text
+    $("h3").each((_, header) => {
+      const headerText = $(header).text().trim();
+      const container = $(header).next();
+
+      if (headerText.includes("wins lane against")) {
+        container.find("a").each((_, link) => {
+          const text = $(link).text().trim();
+          const champName = text.split("\n")[0].trim();
+          // Try to find win rate from progressbar or percentage text
+          const parent = $(link).parent();
+          const progressBar = parent.find(".progressBar");
+          let winRate = "N/A";
+          if (progressBar.length) {
+            const tooltip =
+              progressBar.attr("title") || progressBar.attr("data-tip") || "";
+            const match = tooltip.match(/([\d.]+%)/);
+            if (match) winRate = match[1];
+          }
+          if (
+            champName &&
+            champName.length > 1 &&
+            !champName.includes("Top") &&
+            !champName.includes("Mid")
+          ) {
+            winsAgainst.push({ name: champName, winRate });
+          }
+        });
+      } else if (headerText.includes("loses lane against")) {
+        container.find("a").each((_, link) => {
+          const text = $(link).text().trim();
+          const champName = text.split("\n")[0].trim();
+          const parent = $(link).parent();
+          const progressBar = parent.find(".progressBar");
+          let winRate = "N/A";
+          if (progressBar.length) {
+            const tooltip =
+              progressBar.attr("title") || progressBar.attr("data-tip") || "";
+            const match = tooltip.match(/([\d.]+%)/);
+            if (match) winRate = match[1];
+          }
+          if (
+            champName &&
+            champName.length > 1 &&
+            !champName.includes("Top") &&
+            !champName.includes("Mid")
+          ) {
+            losesAgainst.push({ name: champName, winRate });
+          }
+        });
+      }
+    });
+
+    console.log(
+      `[Counter] ✅ Found ${winsAgainst.length} wins, ${losesAgainst.length} loses`
+    );
+
+    return {
+      success: true,
+      championName: champion,
+      winsAgainst: winsAgainst.slice(0, 10),
+      losesAgainst: losesAgainst.slice(0, 10),
+    };
+  } catch (error) {
+    console.error(`[Counter] ❌ Failed to fetch ${champion}:`, error);
+    return {
+      success: false,
+      championName: champion,
+      error: "ไม่สามารถดึงข้อมูล Counter ได้",
+    };
   }
 }
