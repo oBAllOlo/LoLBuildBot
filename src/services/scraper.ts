@@ -17,24 +17,14 @@ import {
 /**
  * Get average build data for a champion
  * @param championName Name of the champion (e.g., "Yasuo")
-<<<<<<< HEAD
  * @param role Optional role filter (currently not used - Mobalytics returns popular role)
-=======
- * @param role Optional role filter (e.g., "top", "jungle", "middle", "adc", "support")
->>>>>>> origin/main
  */
 export async function getAverageBuild(
   championName: string,
   role?: string
 ): Promise<ChallengerBuildResponse> {
   try {
-<<<<<<< HEAD
     const build = await fetchMobalyticsBuild(championName, role);
-=======
-    // 1. Try Dynamic Scraper (All Champions)
-    const version = await getLatestVersion();
-    const build = await fetchChampionBuild(championName, version, role);
->>>>>>> origin/main
 
     if (
       build.success &&

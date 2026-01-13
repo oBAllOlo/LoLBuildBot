@@ -47,9 +47,11 @@ console.log(
 
 // Validate token before initializing CommandKit
 const token = process.env.TOKEN;
-if (!token || typeof token !== 'string' || token.trim() === '') {
-  console.error('[Error] Discord bot token is missing or invalid!');
-  console.error('[Error] Please create a .env file (or .env.example) with TOKEN=your_bot_token');
+if (!token || typeof token !== "string" || token.trim() === "") {
+  console.error("[Error] Discord bot token is missing or invalid!");
+  console.error(
+    "[Error] Please create a .env file (or .env.example) with TOKEN=your_bot_token"
+  );
   process.exit(1);
 }
 
@@ -60,23 +62,19 @@ new CommandKit({
   devGuildIds,
 });
 
-<<<<<<< HEAD
 import { getAllChampionNames } from "./utils/ddragon.js";
+
+// Start keep-alive server for UptimeRobot
+keepAlive();
 
 // Pre-warm cache
 console.log("[System] Pre-warming DDragon cache...");
 getAllChampionNames()
   .then((names) => {
     console.log(`[System] Cached ${names.length} champions`);
-    client.login(process.env.TOKEN);
+    client.login(token);
   })
   .catch((err) => {
     console.error("[System] Failed to pre-warm cache:", err);
-    client.login(process.env.TOKEN);
+    client.login(token);
   });
-=======
-// Start keep-alive server for UptimeRobot
-keepAlive();
-
-client.login(token);
->>>>>>> origin/main
