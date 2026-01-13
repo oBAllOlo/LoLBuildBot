@@ -34,8 +34,14 @@ const client = new Client({
   intents: [IntentsBitField.Flags.Guilds],
 });
 
-// Get dev guild ID from environment for instant command updates
-const devGuildIds = process.env.DEV_GUILD_ID ? [process.env.DEV_GUILD_ID] : [];
+// Get dev guild IDs from environment for instant command updates
+const devConfig = process.env.DEV_GUILD_IDS || process.env.DEV_GUILD_ID || "";
+const devGuildIds = devConfig
+  ? devConfig
+      .split(",")
+      .map((id) => id.trim())
+      .filter((id) => id !== "")
+  : [];
 
 console.log(
   `[Bot] Dev Guild IDs: ${

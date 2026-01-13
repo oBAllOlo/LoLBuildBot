@@ -56,16 +56,6 @@ export const data: CommandData = {
         { name: "🛡️ Support", value: "support" },
       ],
     },
-    {
-      name: "type",
-      description: "ประเภท Build ที่ต้องการ",
-      type: ApplicationCommandOptionType.String,
-      required: false,
-      choices: [
-        { name: "📊 Meta (Mobalytics)", value: "meta" },
-        { name: "🏆 Pro (Challenger)", value: "pro" },
-      ],
-    },
   ],
 };
 
@@ -86,46 +76,33 @@ function formatItems(items: number[], version: string): string {
 export const run = async ({ interaction }: SlashCommandProps) => {
   const champion = interaction.options.getString("champion", true);
   const role = interaction.options.getString("role") || undefined;
-  const buildType = interaction.options.getString("type") || "meta";
 
   // Defer reply since scraping may take time
   try {
     await interaction.deferReply();
   } catch (e) {
-    // Interaction already acknowledged (e.g., bot restarted mid-interaction)
     console.warn(
       "[Build Command] Interaction already acknowledged, skipping..."
     );
     return;
   }
-
   try {
     const version = await getLatestVersion();
 
     console.log(
       `[Command] /build input - Champion: "${champion}", Role: "${
         role || "Auto"
-      }", Type: "${buildType}"`
+      }"`
     );
 
     // Progress: 10%
     const roleText = role ? ` (${role.toUpperCase()})` : "";
     await interaction.editReply({
-      content: `🔍 กำลังดึงข้อมูล Build (${buildType}) ของ **${champion}**${roleText}... (10%)`,
+      content: `🔍 กำลังดึงข้อมูล Build ของ **${champion}**${roleText}... (10%)`,
     });
 
-    let result;
-    if (buildType === "pro") {
-      // Use Pro Players Build from Riot API
-      await interaction.editReply({
-        content: `🔍 กำลังค้นหา Pro Players Build ของ **${champion}**${roleText}... (10%)`,
-      });
-      result = await getChallengerBuildAllRegions(champion);
-    } else {
-      // Use Scraper for Meta Build (default)
-      // This internally calls fetchMobalyticsBuild per our updated scraper.ts
-      result = await getAverageBuild(champion, role);
-    }
+    // Use Scraper for Meta Build (default)
+    const result = await getAverageBuild(champion, role);
 
     if (!result.success) {
       const errorEmbed = new EmbedBuilder()
@@ -219,7 +196,7 @@ export const run = async ({ interaction }: SlashCommandProps) => {
       .setDescription(
         `**Role:** ${result.gameMode}\n**Win Rate:** ${
           result.winRate || "N/A"
-        } • **Pick Rate:** ${result.pickRate || "N/A"}`
+        } • **Matches:** ${result.pickRate || "N/A"}`
       )
       .setThumbnail(getChampionImageUrl(version, result.championName))
       .addFields(
