@@ -1,5 +1,20 @@
 import axios from "axios";
 import * as cheerio from "cheerio";
+import fs from "fs/promises";
+import path from "path";
+import { dirname } from "path";
+import { fileURLToPath } from "url";
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const CACHE_DIR = path.join(__dirname, "../../data/cache/log");
+
+async function ensureCacheDir() {
+  try {
+    await fs.mkdir(CACHE_DIR, { recursive: true });
+  } catch (error) {
+    // Ignore if exists
+  }
+}
 
 interface LOGBuildData {
   role: string;
@@ -25,28 +40,18 @@ export async function fetchChampionBuild(
   role?: string
 ): Promise<LOGBuildData | null> {
   const cleanName = champion.toLowerCase().replace(/[^a-z0-9]/g, "");
-<<<<<<< HEAD
+  const roleKey = role ? `-${role}` : "";
+  const cachePath = path.join(CACHE_DIR, `${cleanName}${roleKey}.json`);
 
   console.log(
     `[Scraper] ⏱️ START fetching ${champion}${
       role ? ` (${role})` : ""
     } (v${gameVersion})...`
   );
-=======
-  const roleKey = role ? `-${role}` : "";
-  const cachePath = path.join(CACHE_DIR, `${cleanName}${roleKey}.json`);
-
-  console.log(`[Scraper] ⏱️ START fetching ${champion}${role ? ` (${role})` : ""} (v${gameVersion})...`);
->>>>>>> origin/main
   const startTime = Date.now();
 
   // Fetch
   try {
-<<<<<<< HEAD
-    // Build URL with optional role
-    const roleSlug = role ? `/${role}` : "";
-    const url = `https://www.leagueofgraphs.com/champions/builds/${cleanName}${roleSlug}`;
-=======
     await ensureCacheDir();
     const stats = await fs.stat(cachePath);
     const now = new Date().getTime();
@@ -71,7 +76,9 @@ export async function fetchChampionBuild(
       cached.items.boots = cached.items.boots.slice(0, 1);
       cached.items.situational = cached.items.situational.slice(0, 3);
       console.log(
-        `[Scraper] ⚡ Using cached data for ${champion}${role ? ` (${role})` : ""} (v${cached.dataVersion})`
+        `[Scraper] ⚡ Using cached data for ${champion}${
+          role ? ` (${role})` : ""
+        } (v${cached.dataVersion})`
       );
       return cached;
     }
@@ -94,7 +101,6 @@ export async function fetchChampionBuild(
     // Build URL with optional role path
     const roleUrlPart = role ? `/${role}` : "";
     const url = `https://www.leagueofgraphs.com/champions/builds/${cleanName}${roleUrlPart}`;
->>>>>>> origin/main
     console.log(`[Scraper] 🌐 Requesting ${url}...`);
 
     const { data } = await axios.get(url, {

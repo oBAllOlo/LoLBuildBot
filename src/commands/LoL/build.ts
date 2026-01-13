@@ -45,24 +45,7 @@ export const data: CommandData = {
     },
     {
       name: "role",
-<<<<<<< HEAD
       description: "ตำแหน่งที่ต้องการ (ไม่ระบุ = ตำแหน่งยอดนิยม)",
-=======
-      description: "ตำแหน่งที่ต้องการดู Build",
-      type: ApplicationCommandOptionType.String,
-      required: false,
-      choices: [
-        { name: "🗡️ Top", value: "top" },
-        { name: "🌲 Jungle", value: "jungle" },
-        { name: "🔮 Mid", value: "middle" },
-        { name: "🏹 ADC (Bot)", value: "adc" },
-        { name: "🛡️ Support", value: "support" },
-      ],
-    },
-    {
-      name: "type",
-      description: "ประเภท Build ที่ต้องการ",
->>>>>>> origin/main
       type: ApplicationCommandOptionType.String,
       required: false,
       choices: [
@@ -71,6 +54,16 @@ export const data: CommandData = {
         { name: "🔮 Mid", value: "middle" },
         { name: "🏹 ADC", value: "adc" },
         { name: "🛡️ Support", value: "support" },
+      ],
+    },
+    {
+      name: "type",
+      description: "ประเภท Build ที่ต้องการ",
+      type: ApplicationCommandOptionType.String,
+      required: false,
+      choices: [
+        { name: "📊 Meta (Mobalytics)", value: "meta" },
+        { name: "🏆 Pro (Challenger)", value: "pro" },
       ],
     },
   ],
@@ -92,19 +85,17 @@ function formatItems(items: number[], version: string): string {
  */
 export const run = async ({ interaction }: SlashCommandProps) => {
   const champion = interaction.options.getString("champion", true);
-<<<<<<< HEAD
-  const role = interaction.options.getString("role") || undefined; // Optional role
-=======
-  const role = interaction.options.getString("role") || undefined; // Optional role filter
+  const role = interaction.options.getString("role") || undefined;
   const buildType = interaction.options.getString("type") || "meta";
->>>>>>> origin/main
 
   // Defer reply since scraping may take time
   try {
     await interaction.deferReply();
   } catch (e) {
     // Interaction already acknowledged (e.g., bot restarted mid-interaction)
-    console.warn("[Build Command] Interaction already acknowledged, skipping...");
+    console.warn(
+      "[Build Command] Interaction already acknowledged, skipping..."
+    );
     return;
   }
 
@@ -114,19 +105,15 @@ export const run = async ({ interaction }: SlashCommandProps) => {
     console.log(
       `[Command] /build input - Champion: "${champion}", Role: "${
         role || "Auto"
-      }"`
+      }", Type: "${buildType}"`
     );
 
     // Progress: 10%
     const roleText = role ? ` (${role.toUpperCase()})` : "";
     await interaction.editReply({
-      content: `🔍 กำลังดึงข้อมูล Build ของ **${champion}**${roleText}... (10%)`,
+      content: `🔍 กำลังดึงข้อมูล Build (${buildType}) ของ **${champion}**${roleText}... (10%)`,
     });
 
-<<<<<<< HEAD
-    // Use Scraper for Meta Build (default)
-    const result = await getAverageBuild(champion, role);
-=======
     let result;
     if (buildType === "pro") {
       // Use Pro Players Build from Riot API
@@ -136,9 +123,9 @@ export const run = async ({ interaction }: SlashCommandProps) => {
       result = await getChallengerBuildAllRegions(champion);
     } else {
       // Use Scraper for Meta Build (default)
+      // This internally calls fetchMobalyticsBuild per our updated scraper.ts
       result = await getAverageBuild(champion, role);
     }
->>>>>>> origin/main
 
     if (!result.success) {
       const errorEmbed = new EmbedBuilder()
