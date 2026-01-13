@@ -27,39 +27,38 @@ process.on("warning", (warning) => {
 import { Client, IntentsBitField } from "discord.js";
 import { CommandKit } from "commandkit";
 import { keepAlive } from "./utils/keepAlive.js";
+import { envValidator } from "./config/env.js";
+import { logger } from "./utils/logger.js";
 
 const dirname = __dirname;
+
+// Validate environment variables
+let envConfig;
+try {
+  envConfig = envValidator.validate();
+  logger.info("Environment variables validated successfully");
+} catch (error) {
+  logger.error("Environment validation failed", error);
+  process.exit(1);
+}
 
 const client = new Client({
   intents: [IntentsBitField.Flags.Guilds],
 });
 
-// Get dev guild IDs from environment for instant command updates
-const devConfig = process.env.DEV_GUILD_IDS || process.env.DEV_GUILD_ID || "";
-const devGuildIds = devConfig
-  ? devConfig
-      .split(",")
-      .map((id) => id.trim())
-      .filter((id) => id !== "")
-  : [];
+// Get dev guild IDs from validated config
+const devGuildIds = envConfig.DEV_GUILD_IDS;
 
-console.log(
-  `[Bot] Dev Guild IDs: ${
+logger.info(
+  `Dev Guild IDs: ${
     devGuildIds.length > 0
       ? devGuildIds.join(", ")
       : "None (using global commands)"
   }`
 );
 
-// Validate token before initializing CommandKit
-const token = process.env.TOKEN;
-if (!token || typeof token !== "string" || token.trim() === "") {
-  console.error("[Error] Discord bot token is missing or invalid!");
-  console.error(
-    "[Error] Please create a .env file (or .env.example) with TOKEN=your_bot_token"
-  );
-  process.exit(1);
-}
+// Use validated token
+const token = envConfig.TOKEN;
 
 new CommandKit({
   client,

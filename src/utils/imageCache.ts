@@ -4,7 +4,15 @@
  * Caches generated build images to avoid regenerating the same image
  */
 
-import { existsSync, readFileSync, writeFileSync, mkdirSync } from "fs";
+import {
+  existsSync,
+  readFileSync,
+  writeFileSync,
+  mkdirSync,
+  readdirSync,
+  statSync,
+  unlinkSync,
+} from "fs";
 import { join } from "path";
 import crypto from "crypto";
 
@@ -92,7 +100,6 @@ export function saveImageToCache(
  */
 export function cleanOldCache(maxAgeMs: number = 7 * 24 * 60 * 60 * 1000): void {
   try {
-    const { readdirSync, statSync, unlinkSync } = require("fs");
     const files = readdirSync(CACHE_DIR);
 
     let cleaned = 0;
