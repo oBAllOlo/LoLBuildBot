@@ -253,8 +253,10 @@ export async function getChampionData(
  */
 export async function getAllChampionNames(version?: string): Promise<string[]> {
   if (championNamesCache.length > 0) return championNamesCache;
+  console.log("[DDragon] Fetching champion names...");
   const v = version || (await getLatestVersion());
   await getChampionData(v);
+  console.log(`[DDragon] Cached ${championNamesCache.length} champion names.`);
   return championNamesCache;
 }
 

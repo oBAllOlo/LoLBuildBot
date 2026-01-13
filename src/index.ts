@@ -46,4 +46,16 @@ new CommandKit({
   devGuildIds,
 });
 
-client.login(process.env.TOKEN);
+import { getAllChampionNames } from "./utils/ddragon.js";
+
+// Pre-warm cache
+console.log("[System] Pre-warming DDragon cache...");
+getAllChampionNames()
+  .then((names) => {
+    console.log(`[System] Cached ${names.length} champions`);
+    client.login(process.env.TOKEN);
+  })
+  .catch((err) => {
+    console.error("[System] Failed to pre-warm cache:", err);
+    client.login(process.env.TOKEN);
+  });
