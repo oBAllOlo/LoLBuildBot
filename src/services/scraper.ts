@@ -64,7 +64,7 @@ export async function getAverageBuild(
         gameMode: build.role,
         gameDuration: 0,
         winRate: build.winRate,
-        pickRate: "N/A",
+        pickRate: build.matchCount,
         source: "Mobalytics",
         buildData: {
           championName: championName,
@@ -79,7 +79,7 @@ export async function getAverageBuild(
           summonerSpell1: build.spells[0] || 4,
           summonerSpell2: build.spells[1] || 12,
           winRate: build.winRate,
-          pickRate: "N/A",
+          pickRate: build.matchCount,
           source: "Mobalytics",
         },
         perks: build.runes.perks,
