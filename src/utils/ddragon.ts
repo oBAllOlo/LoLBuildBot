@@ -12,15 +12,22 @@ const DDRAGON_BASE_URL = "https://ddragon.leagueoflegends.com";
 // Cache for version to avoid repeated API calls
 let cachedVersion: string | null = null;
 let cacheTimestamp: number = 0;
-const CACHE_DURATION = 1000 * 60 * 60; // 1 hour
+const CACHE_DURATION = 1000 * 60 * 15; // 15 minutes (shorter for faster patch detection)
 
 /**
  * Get the latest game version from Data Dragon
+ * @param forceRefresh - Force refresh even if cache is valid
  * @returns Latest version string (e.g., "14.1.1")
  */
-export async function getLatestVersion(): Promise<string> {
-  // Return cached version if still valid
-  if (cachedVersion && Date.now() - cacheTimestamp < CACHE_DURATION) {
+export async function getLatestVersion(
+  forceRefresh: boolean = false
+): Promise<string> {
+  // Return cached version if still valid (unless force refresh)
+  if (
+    !forceRefresh &&
+    cachedVersion &&
+    Date.now() - cacheTimestamp < CACHE_DURATION
+  ) {
     return cachedVersion;
   }
 
@@ -28,29 +35,64 @@ export async function getLatestVersion(): Promise<string> {
     const response = await axios.get<string[]>(
       `${DDRAGON_BASE_URL}/api/versions.json`
     );
-    cachedVersion = response.data[0]; // First entry is always the latest
+    const latestVersion = response.data[0]; // First entry is always the latest
+
+    // Check if version changed
+    if (cachedVersion && cachedVersion !== latestVersion) {
+      console.log(
+        `[DDragon] 🔄 Patch updated: ${cachedVersion} → ${latestVersion}`
+      );
+      // Clear all caches when version changes
+      clearAllCaches();
+    }
+
+    cachedVersion = latestVersion;
     cacheTimestamp = Date.now();
     return cachedVersion;
   } catch (error) {
     console.error("Failed to fetch DDragon version:", error);
-    // Fallback to a known version if API fails
+    // Fallback to cached version if available, otherwise use known version
+    if (cachedVersion) {
+      console.warn(
+        `[DDragon] ⚠️  Using cached version ${cachedVersion} due to API error`
+      );
+      return cachedVersion;
+    }
     return "14.1.1";
   }
+}
+
+/**
+ * Clear all caches (used when patch version changes)
+ */
+function clearAllCaches(): void {
+  console.log("[DDragon] 🗑️  Clearing all caches due to patch update...");
+  itemCache = {};
+  runeCache = [];
+  spellCache = {};
+  championCache = {};
+  championNamesCache = [];
 }
 
 /**
  * Get item data (name, description, etc)
  */
 let itemCache: Record<string, any> = {};
+let itemCacheVersion: string | null = null;
 export async function getItemData(
   version: string
 ): Promise<Record<string, any>> {
-  if (Object.keys(itemCache).length > 0) return itemCache;
+  // Check if cache is valid for this version
+  if (Object.keys(itemCache).length > 0 && itemCacheVersion === version) {
+    return itemCache;
+  }
+
   try {
     const { data } = await axios.get(
       `https://ddragon.leagueoflegends.com/cdn/${version}/data/en_US/item.json`
     );
     itemCache = data.data;
+    itemCacheVersion = version;
     return itemCache;
   } catch (error) {
     console.error("Error fetching item data:", error);
@@ -62,13 +104,19 @@ export async function getItemData(
  * Get rune data
  */
 let runeCache: any[] = [];
+let runeCacheVersion: string | null = null;
 export async function getRuneData(version: string): Promise<any[]> {
-  if (runeCache.length > 0) return runeCache;
+  // Check if cache is valid for this version
+  if (runeCache.length > 0 && runeCacheVersion === version) {
+    return runeCache;
+  }
+
   try {
     const { data } = await axios.get(
       `https://ddragon.leagueoflegends.com/cdn/${version}/data/en_US/runesReforged.json`
     );
     runeCache = data;
+    runeCacheVersion = version;
     return runeCache;
   } catch (error) {
     console.error("Error fetching rune data:", error);
@@ -171,16 +219,22 @@ export function getItemImageUrl(version: string, itemId: number): string {
  * Get Summoner Spell Data
  */
 let spellCache: Record<string, any> = {};
+let spellCacheVersion: string | null = null;
 export async function getSummonerSpellData(
   version: string
 ): Promise<Record<string, any>> {
-  if (Object.keys(spellCache).length > 0) return spellCache;
+  // Check if cache is valid for this version
+  if (Object.keys(spellCache).length > 0 && spellCacheVersion === version) {
+    return spellCache;
+  }
+
   try {
     const { data } = await axios.get(
       `https://ddragon.leagueoflegends.com/cdn/${version}/data/en_US/summoner.json`
     );
     // Data is keyed by Spell Name (e.g. SummonerFlash), but has 'key' property which is the ID
     spellCache = data.data;
+    spellCacheVersion = version;
     return spellCache;
   } catch (error) {
     console.error("Error fetching spell data:", error);
@@ -279,18 +333,30 @@ export function getChampionSplashUrl(
  */
 let championCache: Record<string, any> = {};
 let championNamesCache: string[] = [];
+let championCacheVersion: string | null = null;
 export async function getChampionData(
   version: string
 ): Promise<Record<string, any>> {
-  if (Object.keys(championCache).length > 0) return championCache;
+  // Check if cache is valid for this version
+  if (
+    Object.keys(championCache).length > 0 &&
+    championCacheVersion === version
+  ) {
+    return championCache;
+  }
+
   try {
     const { data } = await axios.get(
       `https://ddragon.leagueoflegends.com/cdn/${version}/data/en_US/champion.json`
     );
     championCache = data.data;
+    championCacheVersion = version;
     // Cache champion names list
     championNamesCache = Object.values(data.data).map(
       (champ: any) => champ.name
+    );
+    console.log(
+      `[DDragon] ✅ Cached champion data for version ${version} (${championNamesCache.length} champions)`
     );
     return championCache;
   } catch (error) {
@@ -305,17 +371,20 @@ export async function getChampionData(
  * @returns Array of champion names (e.g., ["Aatrox", "Ahri", "Akali", ...])
  */
 export async function getAllChampionNames(version?: string): Promise<string[]> {
-  if (championNamesCache.length > 0) {
+  // Always get latest version to check for patch updates
+  const latestVersion = await getLatestVersion();
+  const v = version || latestVersion;
+
+  // Check if cache is valid for this version
+  if (championNamesCache.length > 0 && championCacheVersion === v) {
     console.log(
-      `[DDragon] Using cached champion names (${championNamesCache.length} champions)`
+      `[DDragon] Using cached champion names (${championNamesCache.length} champions, v${v})`
     );
     return championNamesCache;
   }
 
-  console.log("[DDragon] Fetching champion names...");
+  console.log(`[DDragon] Fetching champion names for version ${v}...`);
   try {
-    const v = version || (await getLatestVersion());
-    console.log(`[DDragon] Using version: ${v}`);
     await getChampionData(v);
 
     if (championNamesCache.length === 0) {
