@@ -22,6 +22,7 @@ import {
   getAllChampionNames,
 } from "../../utils/ddragon.js";
 import { canRunInGuild, isDevelopment } from "../../utils/env.js";
+import { generateCounterImage } from "../../services/image-gen.js";
 
 /** @type {import('commandkit').CommandData} */
 export const data: CommandData = {
@@ -90,34 +91,40 @@ export const run = async ({ interaction }: SlashCommandProps) => {
       return;
     }
 
-    // Format counter lists with rankings (1-10)
+    // Format counter lists with better styling
     const formatBestMatchups = (
       list: { name: string; winRate: string; games: string }[]
     ) => {
-      if (!list || list.length === 0) return "ไม่มีข้อมูล";
+      if (!list || list.length === 0) return "```\nไม่มีข้อมูล\n```";
       return list
         .slice(0, 10)
-        .map((item, i) => `**${i + 1}.** ${item.name} (${item.winRate})`)
+        .map((item, i) => {
+          const medal = i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : `${i + 1}.`;
+          return `${medal} **${item.name}** - ${item.winRate}`;
+        })
         .join("\n");
     };
 
     const formatWorstMatchups = (
       list: { name: string; winRate: string; games: string }[]
     ) => {
-      if (!list || list.length === 0) return "ไม่มีข้อมูล";
+      if (!list || list.length === 0) return "```\nไม่มีข้อมูล\n```";
       return list
         .slice(0, 10)
-        .map((item, i) => `**${i + 1}.** ${item.name} (${item.winRate})`)
+        .map((item, i) => {
+          const medal = i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : `${i + 1}.`;
+          return `${medal} **${item.name}** - ${item.winRate}`;
+        })
         .join("\n");
     };
 
     const bestMatchups = formatBestMatchups(result.bestMatchups);
     const worstMatchups = formatWorstMatchups(result.worstMatchups);
 
-    const embed = new EmbedBuilder()
-      .setColor(0x00cc66)
-      .setTitle(`⚔️ ${result.championName} Counter`)
-      .setDescription(description);
+    // Calculate stats for description
+    const bestCount = result.bestMatchups?.length || 0;
+    const worstCount = result.worstMatchups?.length || 0;
+    const totalMatchups = bestCount + worstCount;
 
     // Build Mobalytics URL (sanitize champion name)
     const championNameForUrl = result.championName.toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "");
@@ -125,6 +132,20 @@ export const run = async ({ interaction }: SlashCommandProps) => {
 
     // Get champion image URL (with validation)
     const championImageUrl = getChampionImageUrl(version, result.championName);
+
+    // Create embed with better styling
+    const embed = new EmbedBuilder()
+      .setColor(0x5865f2) // Discord blurple color
+      .setTitle(`⚔️ ${result.championName} Counter Matchups`)
+      .setDescription(
+        `\`\`\`\n` +
+        `📊 Matchup Analysis\n` +
+        `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n` +
+        `✅ Easy Wins:  ${bestCount} champions\n` +
+        `❌ Hard Losses: ${worstCount} champions\n` +
+        `📈 Total:      ${totalMatchups} matchups\n` +
+        `\`\`\``
+      );
 
     // Only set URL if valid
     if (mobalyticsUrl && mobalyticsUrl.startsWith("http")) {
@@ -143,21 +164,47 @@ export const run = async ({ interaction }: SlashCommandProps) => {
     embed.addFields(
         {
           name: "✅ Easy Matchups (เราชนะทาง)",
-          value: bestMatchups,
+          value: bestMatchups || "```\nไม่มีข้อมูล\n```",
           inline: true,
         },
         {
           name: "❌ Hard Matchups (เราแพ้ทาง)",
-          value: worstMatchups,
+          value: worstMatchups || "```\nไม่มีข้อมูล\n```",
           inline: true,
         }
       )
       .setFooter({
-        text: `Mobalytics | LoL v${version}`,
+        text: `Mobalytics • LoL Patch ${version} • ข้อมูลจากสถิติผู้เล่น`,
+        iconURL: "https://mobalytics.gg/favicon.ico",
       })
       .setTimestamp();
 
-    await interaction.editReply({ content: "", embeds: [embed] });
+    // Generate counter image with champion portraits
+    let attachment = null;
+    try {
+      console.log(`[Counter Command] 🎨 Generating counter image...`);
+      attachment = await generateCounterImage(
+        result.championName,
+        result.bestMatchups || [],
+        result.worstMatchups || [],
+        version
+      );
+      if (attachment) {
+        embed.setImage("attachment://counter-matchups.png");
+        console.log(`[Counter Command] ✅ Counter image generated successfully`);
+      } else {
+        console.warn(`[Counter Command] ⚠️  Counter image generation returned null`);
+      }
+    } catch (error) {
+      console.error(`[Counter Command] ❌ Error generating counter image:`, error);
+      // Continue without image
+    }
+
+    await interaction.editReply({ 
+      content: "", 
+      embeds: [embed],
+      files: attachment ? [attachment] : undefined
+    });
   } catch (error) {
     console.error("[Counter Command] Error:", error);
 
