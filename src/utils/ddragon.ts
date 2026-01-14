@@ -306,13 +306,32 @@ export async function getRuneImageUrl(
  * Get the URL for a champion's square image
  * @param version - Game version (e.g., "14.1.1")
  * @param championName - Champion name (e.g., "Yasuo", "LeeSin")
- * @returns Full URL to the champion image
+ * @returns Full URL to the champion image, or empty string if invalid
  */
 export function getChampionImageUrl(
-  version: string,
-  championName: string
+  version: string | undefined | null,
+  championName: string | undefined | null
 ): string {
-  return `${DDRAGON_BASE_URL}/cdn/${version}/img/champion/${championName}.png`;
+  // Validate inputs
+  if (!version || !championName) {
+    console.warn(
+      `[DDragon] ⚠️  Invalid parameters for getChampionImageUrl: version="${version}", championName="${championName}"`
+    );
+    return "";
+  }
+
+  // Sanitize champion name (remove spaces, special chars for URL)
+  const sanitizedName = championName
+    .replace(/\s+/g, "")
+    .replace(/[^a-zA-Z0-9]/g, "");
+  if (!sanitizedName) {
+    console.warn(
+      `[DDragon] ⚠️  Champion name became empty after sanitization: "${championName}"`
+    );
+    return "";
+  }
+
+  return `${DDRAGON_BASE_URL}/cdn/${version}/img/champion/${sanitizedName}.png`;
 }
 
 /**

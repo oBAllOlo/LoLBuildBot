@@ -42,11 +42,17 @@ export async function generateBuildImage(
     ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
 
     // -- Header --
-    const formattedName =
-      championName.charAt(0).toUpperCase() +
-      championName.slice(1).toLowerCase();
+    // Sanitize champion name for URL (remove spaces, special chars)
+    const formattedName = championName.replace(/\s+/g, "").replace(/[^a-zA-Z0-9]/g, "");
+    if (!formattedName) {
+      console.error(`[ImageGen] ❌ Invalid champion name: "${championName}"`);
+      return null;
+    }
+    
     const champUrl = `https://ddragon.leagueoflegends.com/cdn/img/champion/splash/${formattedName}_0.jpg`;
     const HEADER_H = 220;
+    let headerImageLoaded = false;
+    
     try {
       const champImg = await loadImage(champUrl);
       const w = CANVAS_WIDTH;
@@ -63,33 +69,44 @@ export async function generateBuildImage(
         w,
         HEADER_H
       );
-
-      // Gradient Overlay
-      const headerGradient = ctx.createLinearGradient(0, 0, 0, HEADER_H);
-      headerGradient.addColorStop(0, "rgba(17, 19, 31, 0.4)");
-      headerGradient.addColorStop(1, "#11131f");
-      ctx.fillStyle = headerGradient;
-      ctx.fillRect(0, 0, w, HEADER_H);
-
-      // Title
-      ctx.save();
-      ctx.shadowColor = "black";
-      ctx.shadowBlur = 10;
-      ctx.fillStyle = "#f0e6d2";
-      ctx.font = "bold 64px Sans";
-      ctx.fillText(championName, PADDING + 20, 110);
-
-      ctx.font = "30px Sans";
-      ctx.fillStyle = "#a09b8c";
-      ctx.fillText(
-        `${stats.role}  |  Win: ${stats.winRate}  |  Pick: ${stats.pickRate}`,
-        PADDING + 24,
-        160
-      );
-      ctx.restore();
-    } catch (e) {
-      console.error("Header error:", e);
+      headerImageLoaded = true;
+    } catch (error: any) {
+      // If champion image fails to load (403, 404, etc.), it might mean champion doesn't exist
+      const errorMsg = error?.message || String(error);
+      if (errorMsg.includes("403") || errorMsg.includes("404") || errorMsg.includes("rejected")) {
+        console.error(`[ImageGen] ❌ Champion image not found (403/404): ${champUrl}`);
+        console.error(`[ImageGen] ❌ This might mean the champion "${championName}" doesn't exist or build data is invalid`);
+        return null; // Return null to indicate failure
+      }
+      // For other errors, log but continue (might be network issue)
+      console.warn(`[ImageGen] ⚠️  Failed to load champion image: ${errorMsg}`);
+      // Continue without image
     }
+
+    // Gradient Overlay (always draw, even if image failed)
+    const w = CANVAS_WIDTH;
+    const headerGradient = ctx.createLinearGradient(0, 0, 0, HEADER_H);
+    headerGradient.addColorStop(0, "rgba(17, 19, 31, 0.4)");
+    headerGradient.addColorStop(1, "#11131f");
+    ctx.fillStyle = headerGradient;
+    ctx.fillRect(0, 0, w, HEADER_H);
+
+    // Title
+    ctx.save();
+    ctx.shadowColor = "black";
+    ctx.shadowBlur = 10;
+    ctx.fillStyle = "#f0e6d2";
+    ctx.font = "bold 64px Sans";
+    ctx.fillText(championName, PADDING + 20, 110);
+
+    ctx.font = "30px Sans";
+    ctx.fillStyle = "#a09b8c";
+    ctx.fillText(
+      `${stats.role}  |  Win: ${stats.winRate}  |  Pick: ${stats.pickRate}`,
+      PADDING + 24,
+      160
+    );
+    ctx.restore();
 
     // -- Layout Helper --
     const SEPARATOR_X = 600;
@@ -123,6 +140,10 @@ export async function generateBuildImage(
         items.map(async (id, index) => {
           const cx = x + index * (scale + GAP);
           const url = getItemImageUrl(version, id);
+          if (!url || !url.startsWith("http")) {
+            console.warn(`[ImageGen] ⚠️  Invalid item URL for item ${id}: ${url}`);
+            return;
+          }
           try {
             const img = await loadImage(url);
             // Shadow
@@ -135,7 +156,13 @@ export async function generateBuildImage(
             ctx.strokeStyle = "#5c5b57";
             ctx.lineWidth = 1;
             ctx.strokeRect(cx, cy, scale, scale);
-          } catch {}
+          } catch (error: any) {
+            const errorMsg = error?.message || String(error);
+            if (errorMsg.includes("403") || errorMsg.includes("404")) {
+              console.warn(`[ImageGen] ⚠️  Item image not found (403/404): ${url}`);
+            }
+            // Continue without this item image
+          }
         })
       );
     };
