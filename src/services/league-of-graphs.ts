@@ -101,7 +101,8 @@ export async function fetchChampionBuild(
     // Build URL with optional role path
     const roleUrlPart = role ? `/${role}` : "";
     const url = `https://www.leagueofgraphs.com/champions/builds/${cleanName}${roleUrlPart}`;
-    console.log(`[Scraper] 🌐 Requesting ${url}...`);
+    console.log(`[Scraper] 🌐 Requesting:`);
+    console.log(`[Scraper]    ${url}`);
 
     const { data } = await axios.get(url, {
       headers: {
@@ -336,7 +337,8 @@ export async function fetchCounterData(champion: string): Promise<CounterData> {
   const cleanName = champion.toLowerCase().replace(/[^a-z0-9]/g, "");
   const url = `https://www.leagueofgraphs.com/champions/counters/${cleanName}`;
 
-  console.log(`[Counter] 🌐 Requesting ${url}...`);
+  console.log(`[Counter] 🌐 Requesting:`);
+  console.log(`[Counter]    ${url}`);
 
   try {
     const { data } = await axios.get(url, {
