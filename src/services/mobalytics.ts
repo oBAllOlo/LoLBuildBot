@@ -280,10 +280,11 @@ export async function fetchMobalyticsBuild(
     }
   }
 
-  console.log(`[Mobalytics] 🌐 Fetching build from ${url}...`);
+  console.log(`[Mobalytics] 🌐 Fetching build from:`);
+  console.log(`[Mobalytics]    ${url}`);
 
   try {
-    const { data: html, status } = await axios.get(url, {
+    const { data: html, status, request } = await axios.get(url, {
       headers: {
         "User-Agent":
           "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
@@ -292,18 +293,45 @@ export async function fetchMobalyticsBuild(
         "Accept-Language": "en-US,en;q=0.5",
       },
       validateStatus: (status) => status < 500, // Accept 404, 403, etc.
+      maxRedirects: 5, // Allow redirects
     });
+
+    // Log actual status and final URL (after redirects)
+    const finalUrl = request?.res?.responseUrl || url;
+    console.log(`[Mobalytics] 📊 HTTP Status: ${status}`);
+    if (finalUrl !== url) {
+      console.log(`[Mobalytics] 🔄 Redirected to: ${finalUrl}`);
+    }
 
     // Check if it's a 404 page or "page not found" page
     const $ = cheerio.load(html);
     const pageText = $("body").text().toLowerCase();
+    const titleText = $("title").text().toLowerCase();
+    
+    console.log(`[Mobalytics] 📄 Page title: ${$("title").text()}`);
+    console.log(`[Mobalytics] 📄 Body preview: ${pageText.substring(0, 200)}...`);
+    
+    // First, try to extract from preloaded state (even if status is 404, sometimes data exists)
+    const buildData = extractBuildFromState(html);
+    
+    // If we got valid build data, use it regardless of status code
+    if (
+      buildData &&
+      (buildData.items.core.length > 0 || buildData.runes.perks.length > 0)
+    ) {
+      buildData.championName = champion;
+      console.log(`[Mobalytics] ✅ Build extracted successfully (status: ${status})`);
+      return buildData;
+    }
+
+    // If no build data found, check if it's a 404 page
     const is404Page = 
       status === 404 ||
       pageText.includes("looks like you are lost") ||
       pageText.includes("page not found") ||
-      pageText.includes("404") ||
-      $("title").text().toLowerCase().includes("not found") ||
-      $("title").text().toLowerCase().includes("404");
+      (pageText.includes("404") && !pageText.includes("4040")) || // Avoid false positives
+      titleText.includes("not found") ||
+      titleText.includes("404");
 
     if (is404Page) {
       const roleText = role ? ` สำหรับตำแหน่ง ${role}` : "";
@@ -321,21 +349,11 @@ export async function fetchMobalyticsBuild(
       };
     }
 
-    // Try to extract from preloaded state
-    const buildData = extractBuildFromState(html);
-
-    if (
-      buildData &&
-      (buildData.items.core.length > 0 || buildData.runes.perks.length > 0)
-    ) {
-      buildData.championName = champion;
-      console.log(`[Mobalytics] ✅ Build extracted successfully`);
-      return buildData;
-    }
-
-    // If no build data found, return error instead of fallback
+    // If we reach here, no build data was found and it's not a clear 404 page
+    // This might mean the page loaded but has no build data for this role
     const roleText = role ? ` สำหรับตำแหน่ง ${role}` : "";
     console.log(`[Mobalytics] ❌ ไม่พบข้อมูล Build ในหน้าเว็บสำหรับ ${champion}${roleText}`);
+    console.log(`[Mobalytics]    Status: ${status}, __PRELOADED_STATE__: ${html.includes("__PRELOADED_STATE__") ? "found" : "not found"}, BuildData: ${buildData ? "extracted but empty" : "not extracted"}`);
     return {
       success: false,
       championName: champion,
@@ -393,7 +411,8 @@ export async function fetchMobalyticsCounters(
   // Fetch from the dedicated counters page
   const url = `https://mobalytics.gg/lol/champions/${cleanName}/counters`;
 
-  console.log(`[Mobalytics] 🌐 Fetching counters from ${url}...`);
+    console.log(`[Mobalytics] 🌐 Fetching counters from:`);
+    console.log(`[Mobalytics]    ${url}`);
 
   try {
     const { data: html } = await axios.get(url, {
