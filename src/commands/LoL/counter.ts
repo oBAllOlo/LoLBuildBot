@@ -21,6 +21,7 @@ import {
   getChampionImageUrl,
   getAllChampionNames,
 } from "../../utils/ddragon.js";
+import { canRunInGuild, isDevelopment } from "../../utils/env.js";
 
 /** @type {import('commandkit').CommandData} */
 export const data: CommandData = {
@@ -41,6 +42,21 @@ export const data: CommandData = {
  * @param {import('commandkit').SlashCommandProps} param0
  */
 export const run = async ({ interaction }: SlashCommandProps) => {
+  // Check if command should run in this guild (dev mode protection)
+  if (!canRunInGuild(interaction.guildId)) {
+    if (isDevelopment()) {
+      try {
+        await interaction.reply({
+          content: "⚠️ This bot is running in development mode and only works in test servers.",
+          ephemeral: true,
+        });
+      } catch (e) {
+        // Ignore if already replied
+      }
+      return;
+    }
+  }
+
   const champion = interaction.options.getString("champion", true);
 
   // Defer reply since scraping may take time
@@ -158,19 +174,27 @@ export const autocomplete = async (ctx: any): Promise<void> => {
     const focusedValue = interaction.options.getFocused(false) as string;
     const query = (focusedValue || "").toLowerCase().trim();
 
-    // If query is too short, return empty
-    if (query.length === 0) {
-      if (!interaction.responded) {
-        await interaction.respond([]);
-      }
-      return;
-    }
-
     const championNames = await getAllChampionNames();
 
-    const filtered = championNames
-      .filter((name) => name.toLowerCase().includes(query))
-      .slice(0, 25);
+    // Sort champions alphabetically for consistent display
+    const sortedChampions = [...championNames].sort((a, b) => 
+      a.localeCompare(b, 'en', { sensitivity: 'base' })
+    );
+
+    // Filter champions that match the query
+    // If query is empty, show first 25 champions (alphabetically sorted)
+    let filtered: string[];
+    if (query.length === 0) {
+      // Show first 25 champions when no query (sorted alphabetically)
+      filtered = sortedChampions.slice(0, 25);
+      console.log(`[Counter Autocomplete] Showing first 25 champions (sorted alphabetically, total: ${championNames.length})`);
+    } else {
+      // Filter by query (also sorted alphabetically)
+      filtered = sortedChampions
+        .filter((name) => name.toLowerCase().includes(query))
+        .slice(0, 25); // Discord autocomplete limit is 25
+      console.log(`[Counter Autocomplete] Filtered ${championNames.length} champions to ${filtered.length} matches for query "${query}"`);
+    }
 
     // Double check before responding
     if (!interaction.responded) {

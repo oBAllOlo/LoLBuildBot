@@ -34,6 +34,63 @@ const client = new Client({
   intents: [IntentsBitField.Flags.Guilds],
 });
 
+// Detect environment
+// Support both NODE_ENV and DEV_MODE
+const devMode = process.env.DEV_MODE === "true" || process.env.DEV_MODE === "1";
+const nodeEnvDev = process.env.NODE_ENV === "development";
+const isDevelopment =
+  devMode || nodeEnvDev || (!process.env.NODE_ENV && !process.env.DEV_MODE);
+const environment = isDevelopment ? "DEVELOPMENT" : "PRODUCTION";
+
+// Detect host/platform
+const isRender = !!process.env.RENDER;
+const isReplit = !!process.env.REPL_ID || !!process.env.REPL_SLUG;
+const isVercel = !!process.env.VERCEL;
+const isHeroku = !!process.env.DYNO;
+const isLocalhost = !isRender && !isReplit && !isVercel && !isHeroku;
+
+let hostInfo = "Unknown";
+if (isRender) hostInfo = "Render (Production)";
+else if (isReplit) hostInfo = "Replit";
+else if (isVercel) hostInfo = "Vercel";
+else if (isHeroku) hostInfo = "Heroku";
+else hostInfo = "Localhost (Development)";
+
+// Display environment info
+console.log("\n" + "=".repeat(60));
+console.log(`[Bot] 🚀 Starting Bot...`);
+console.log(`[Bot] 📍 Host: ${hostInfo}`);
+console.log(`[Bot] 🔧 Environment: ${environment}`);
+console.log(
+  `[Bot] 🏠 Running on: ${isLocalhost ? "LOCALHOST" : "PRODUCTION HOST"}`
+);
+
+if (isDevelopment) {
+  console.log(
+    `[Bot] ⚠️  Running in DEVELOPMENT mode - commands will be limited to dev guilds only!`
+  );
+} else {
+  console.log(`[Bot] ✅ Running in PRODUCTION mode - commands will be global`);
+}
+
+if (isLocalhost && !isDevelopment) {
+  console.warn(
+    `[Bot] ⚠️  WARNING: Running on localhost but NODE_ENV is not 'development'!`
+  );
+  console.warn(
+    `[Bot] ⚠️  Consider setting NODE_ENV=development or DEV_MODE=true for local testing`
+  );
+}
+
+if (!isLocalhost && isDevelopment) {
+  console.warn(
+    `[Bot] ⚠️  WARNING: Running on production host (${hostInfo}) but in DEVELOPMENT mode!`
+  );
+  console.warn(`[Bot] ⚠️  This is unusual - make sure this is intentional`);
+}
+
+console.log("=".repeat(60) + "\n");
+
 // Get dev guild IDs from environment for instant command updates
 const devConfig = process.env.DEV_GUILD_IDS || process.env.DEV_GUILD_ID || "";
 const devGuildIds = devConfig
@@ -43,21 +100,68 @@ const devGuildIds = devConfig
       .filter((id) => id !== "")
   : [];
 
-console.log(
-  `[Bot] Dev Guild IDs: ${
-    devGuildIds.length > 0
-      ? devGuildIds.join(", ")
-      : "None (using global commands)"
-  }`
-);
+if (isDevelopment && devGuildIds.length === 0) {
+  console.warn(
+    `[Bot] ⚠️  WARNING: Running in DEVELOPMENT mode but no DEV_GUILD_IDS specified!`
+  );
+  console.warn(
+    `[Bot] ⚠️  Commands will be registered globally and may conflict with production bot!`
+  );
+  console.warn(
+    `[Bot] ⚠️  Please set DEV_GUILD_IDS in your .env file for local testing.`
+  );
+} else {
+  console.log(
+    `[Bot] Dev Guild IDs: ${
+      devGuildIds.length > 0
+        ? devGuildIds.join(", ")
+        : "None (using global commands)"
+    }`
+  );
+}
 
-// Validate token before initializing CommandKit
-const token = process.env.TOKEN;
+// Get token based on environment
+// Priority: TOKEN > TOKEN_PROD/TOKEN_TEST (based on NODE_ENV)
+let token = process.env.TOKEN;
+let tokenSource = "TOKEN";
+
+if (!token) {
+  // If TOKEN is not set, try TOKEN_PROD or TOKEN_TEST based on environment
+  if (isDevelopment) {
+    token = process.env.TOKEN_TEST;
+    if (token) {
+      tokenSource = "TOKEN_TEST";
+      console.log(`[Bot] 🔑 Using TOKEN_TEST for development mode`);
+    }
+  } else {
+    token = process.env.TOKEN_PROD;
+    if (token) {
+      tokenSource = "TOKEN_PROD";
+      console.log(`[Bot] 🔑 Using TOKEN_PROD for production mode`);
+    }
+  }
+} else {
+  console.log(`[Bot] 🔑 Using TOKEN (explicit token set)`);
+}
+
+// Show token info (masked for security)
+if (token) {
+  const maskedToken =
+    token.length > 10
+      ? `${token.substring(0, 4)}...${token.substring(token.length - 4)}`
+      : "***";
+  console.log(`[Bot] 🔐 Token Source: ${tokenSource}`);
+  console.log(`[Bot] 🔐 Token Preview: ${maskedToken}`);
+}
+
+// Validate token
 if (!token || typeof token !== "string" || token.trim() === "") {
   console.error("[Error] Discord bot token is missing or invalid!");
-  console.error(
-    "[Error] Please create a .env file (or .env.example) with TOKEN=your_bot_token"
-  );
+  if (isDevelopment) {
+    console.error("[Error] Please set TOKEN or TOKEN_TEST in your .env file");
+  } else {
+    console.error("[Error] Please set TOKEN or TOKEN_PROD in your .env file");
+  }
   process.exit(1);
 }
 

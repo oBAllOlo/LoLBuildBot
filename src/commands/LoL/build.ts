@@ -30,6 +30,7 @@ import {
   getAllChampionNames,
 } from "../../utils/ddragon.js";
 import { generateBuildImage } from "../../services/image-gen.js";
+import { canRunInGuild, isDevelopment } from "../../utils/env.js";
 
 /** @type {import('commandkit').CommandData} */
 export const data: CommandData = {
@@ -74,6 +75,21 @@ function formatItems(items: number[], version: string): string {
  * @param {import('commandkit').SlashCommandProps} param0
  */
 export const run = async ({ interaction }: SlashCommandProps) => {
+  // Check if command should run in this guild (dev mode protection)
+  if (!canRunInGuild(interaction.guildId)) {
+    if (isDevelopment()) {
+      try {
+        await interaction.reply({
+          content: "⚠️ This bot is running in development mode and only works in test servers.",
+          ephemeral: true,
+        });
+      } catch (e) {
+        // Ignore if already replied
+      }
+      return;
+    }
+  }
+
   const champion = interaction.options.getString("champion", true);
   const role = interaction.options.getString("role") || undefined;
 
@@ -263,6 +279,7 @@ export const autocomplete = async (
       !interaction.options ||
       typeof interaction.options.getFocused !== "function"
     ) {
+      console.warn("[Build Autocomplete] Options or getFocused not available");
       return;
     }
 
@@ -270,36 +287,82 @@ export const autocomplete = async (
     const focusedValue = interaction.options.getFocused(false) as string;
     const query = (focusedValue || "").toLowerCase().trim();
 
-    // If query is too short, return empty
-    if (query.length === 0) {
+    console.log(`[Build Autocomplete] Query: "${query}"`);
+
+    // Fetch champion names (with timeout)
+    let championNames: string[] = [];
+    try {
+      championNames = await Promise.race([
+        getAllChampionNames(),
+        new Promise<string[]>((_, reject) =>
+          setTimeout(() => reject(new Error("Timeout")), 5000)
+        ),
+      ]);
+    } catch (fetchError) {
+      console.error("[Build Autocomplete] Failed to fetch champion names:", fetchError);
+      // Return empty if fetch fails
       if (!interaction.responded) {
         await interaction.respond([]);
       }
       return;
     }
 
-    const championNames = await getAllChampionNames();
+    if (!championNames || championNames.length === 0) {
+      console.warn("[Build Autocomplete] No champion names available");
+      if (!interaction.responded) {
+        await interaction.respond([]);
+      }
+      return;
+    }
+
+    console.log(`[Build Autocomplete] Found ${championNames.length} champions`);
+
+    // Sort champions alphabetically for consistent display
+    const sortedChampions = [...championNames].sort((a, b) => 
+      a.localeCompare(b, 'en', { sensitivity: 'base' })
+    );
 
     // Filter champions that match the query
-    const filtered = championNames
-      .filter((name) => name.toLowerCase().includes(query))
-      .slice(0, 25); // Discord autocomplete limit is 25
+    // If query is empty, show first 25 champions (alphabetically sorted)
+    let filtered: string[];
+    if (query.length === 0) {
+      // Show first 25 champions when no query (sorted alphabetically)
+      filtered = sortedChampions.slice(0, 25);
+      console.log(`[Build Autocomplete] Showing first 25 champions (sorted alphabetically, total: ${championNames.length})`);
+    } else {
+      // Filter by query (also sorted alphabetically)
+      filtered = sortedChampions
+        .filter((name) => name.toLowerCase().includes(query))
+        .slice(0, 25); // Discord autocomplete limit is 25
+      console.log(`[Build Autocomplete] Filtered ${championNames.length} champions to ${filtered.length} matches for query "${query}"`);
+    }
+
 
     // Double check before responding
     if (!interaction.responded) {
-      await interaction.respond(
-        filtered.map((name) => ({
-          name: name,
-          value: name,
-        }))
-      );
+      const choices = filtered.map((name) => ({
+        name: name,
+        value: name,
+      }));
+      
+      await interaction.respond(choices);
+      console.log(`[Build Autocomplete] Responded with ${choices.length} choices`);
     }
   } catch (error: any) {
     // Only log if it's not the "already acknowledged" error
-    if (error?.code !== 40060) {
-      console.error("[Autocomplete] Error:", error);
+    if (error?.code !== 40060 && error?.message !== "The reply to this interaction has already been sent or deferred.") {
+      console.error("[Build Autocomplete] Error:", error);
+      console.error("[Build Autocomplete] Error stack:", error?.stack);
     }
-    // Don't try to respond again if already responded
+    
+    // Try to respond with empty array if not responded yet
+    if (!interaction.responded) {
+      try {
+        await interaction.respond([]);
+      } catch (e) {
+        // Ignore if already responded
+      }
+    }
   }
 };
 
