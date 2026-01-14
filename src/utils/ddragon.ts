@@ -305,12 +305,44 @@ export async function getChampionData(
  * @returns Array of champion names (e.g., ["Aatrox", "Ahri", "Akali", ...])
  */
 export async function getAllChampionNames(version?: string): Promise<string[]> {
-  if (championNamesCache.length > 0) return championNamesCache;
+  if (championNamesCache.length > 0) {
+    console.log(
+      `[DDragon] Using cached champion names (${championNamesCache.length} champions)`
+    );
+    return championNamesCache;
+  }
+
   console.log("[DDragon] Fetching champion names...");
-  const v = version || (await getLatestVersion());
-  await getChampionData(v);
-  console.log(`[DDragon] Cached ${championNamesCache.length} champion names.`);
-  return championNamesCache;
+  try {
+    const v = version || (await getLatestVersion());
+    console.log(`[DDragon] Using version: ${v}`);
+    await getChampionData(v);
+
+    if (championNamesCache.length === 0) {
+      console.warn(
+        "[DDragon] ⚠️  Champion names cache is still empty after fetch!"
+      );
+      // Try to extract from championCache if available
+      if (Object.keys(championCache).length > 0) {
+        championNamesCache = Object.values(championCache).map(
+          (champ: any) => champ.name
+        );
+        console.log(
+          `[DDragon] Extracted ${championNamesCache.length} names from cache`
+        );
+      }
+    } else {
+      console.log(
+        `[DDragon] ✅ Cached ${championNamesCache.length} champion names.`
+      );
+    }
+
+    return championNamesCache;
+  } catch (error) {
+    console.error("[DDragon] ❌ Error fetching champion names:", error);
+    // Return empty array instead of throwing
+    return [];
+  }
 }
 
 /**
