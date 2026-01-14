@@ -117,11 +117,30 @@ export const run = async ({ interaction }: SlashCommandProps) => {
     const embed = new EmbedBuilder()
       .setColor(0x00cc66)
       .setTitle(`⚔️ ${result.championName} Counter`)
-      .setURL(
-        `https://mobalytics.gg/lol/champions/${result.championName.toLowerCase()}/counters`
-      )
-      .setThumbnail(getChampionImageUrl(version, result.championName))
-      .addFields(
+      .setDescription(description);
+
+    // Build Mobalytics URL (sanitize champion name)
+    const championNameForUrl = result.championName.toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "");
+    const mobalyticsUrl = `https://mobalytics.gg/lol/champions/${championNameForUrl}/counters`;
+
+    // Get champion image URL (with validation)
+    const championImageUrl = getChampionImageUrl(version, result.championName);
+
+    // Only set URL if valid
+    if (mobalyticsUrl && mobalyticsUrl.startsWith("http")) {
+      embed.setURL(mobalyticsUrl);
+    } else {
+      console.warn(`[Counter Command] ⚠️  Invalid Mobalytics URL: ${mobalyticsUrl}`);
+    }
+
+    // Only set thumbnail if valid URL
+    if (championImageUrl && championImageUrl.startsWith("http")) {
+      embed.setThumbnail(championImageUrl);
+    } else {
+      console.warn(`[Counter Command] ⚠️  Skipping thumbnail due to invalid URL`);
+    }
+
+    embed.addFields(
         {
           name: "✅ Easy Matchups (เราชนะทาง)",
           value: bestMatchups,

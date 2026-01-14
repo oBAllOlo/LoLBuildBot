@@ -283,7 +283,7 @@ export async function fetchMobalyticsBuild(
   console.log(`[Mobalytics] 🌐 Fetching build from ${url}...`);
 
   try {
-    const { data: html } = await axios.get(url, {
+    const { data: html, status } = await axios.get(url, {
       headers: {
         "User-Agent":
           "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
@@ -291,7 +291,35 @@ export async function fetchMobalyticsBuild(
           "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
         "Accept-Language": "en-US,en;q=0.5",
       },
+      validateStatus: (status) => status < 500, // Accept 404, 403, etc.
     });
+
+    // Check if it's a 404 page or "page not found" page
+    const $ = cheerio.load(html);
+    const pageText = $("body").text().toLowerCase();
+    const is404Page = 
+      status === 404 ||
+      pageText.includes("looks like you are lost") ||
+      pageText.includes("page not found") ||
+      pageText.includes("404") ||
+      $("title").text().toLowerCase().includes("not found") ||
+      $("title").text().toLowerCase().includes("404");
+
+    if (is404Page) {
+      const roleText = role ? ` สำหรับตำแหน่ง ${role}` : "";
+      console.log(`[Mobalytics] ❌ 404 - ไม่พบข้อมูล Build สำหรับ ${champion}${roleText}`);
+      return {
+        success: false,
+        championName: champion,
+        role: role || "Unknown",
+        winRate: "N/A",
+        matchCount: "N/A",
+        items: { starter: [], early: [], core: [], boots: 0, situational: [] },
+        runes: { primaryTree: 0, secondaryTree: 0, perks: [] },
+        spells: [],
+        error: `ไม่พบข้อมูล Build สำหรับ "${champion}"${roleText ? ` ในตำแหน่ง ${role}` : ""}`,
+      };
+    }
 
     // Try to extract from preloaded state
     const buildData = extractBuildFromState(html);
@@ -305,27 +333,41 @@ export async function fetchMobalyticsBuild(
       return buildData;
     }
 
-    // Fallback to basic text parsing
-    const $ = cheerio.load(html);
-    const pageText = $("body").text();
-
-    let winRate = "N/A";
-    const winRateMatch = pageText.match(/Win Rate\s*([\d.]+%)/i);
-    if (winRateMatch) winRate = winRateMatch[1];
-
-    console.log(`[Mobalytics] ⚠️ Fallback parsing - WinRate: ${winRate}`);
-
+    // If no build data found, return error instead of fallback
+    const roleText = role ? ` สำหรับตำแหน่ง ${role}` : "";
+    console.log(`[Mobalytics] ❌ ไม่พบข้อมูล Build ในหน้าเว็บสำหรับ ${champion}${roleText}`);
     return {
-      success: true,
+      success: false,
       championName: champion,
-      role: role || "Popular",
-      winRate,
+      role: role || "Unknown",
+      winRate: "N/A",
       matchCount: "N/A",
       items: { starter: [], early: [], core: [], boots: 0, situational: [] },
       runes: { primaryTree: 0, secondaryTree: 0, perks: [] },
-      spells: [4, 12],
+      spells: [],
+      error: `ไม่พบข้อมูล Build สำหรับ "${champion}"${roleText ? ` ในตำแหน่ง ${role}` : ""}`,
     };
-  } catch (error) {
+  } catch (error: any) {
+    // Handle axios errors (network, 403, etc.)
+    if (error.response) {
+      const status = error.response.status;
+      if (status === 404 || status === 403) {
+        const roleText = role ? ` สำหรับตำแหน่ง ${role}` : "";
+        console.log(`[Mobalytics] ❌ ${status} - ไม่พบข้อมูล Build สำหรับ ${champion}${roleText}`);
+        return {
+          success: false,
+          championName: champion,
+          role: role || "Unknown",
+          winRate: "N/A",
+          matchCount: "N/A",
+          items: { starter: [], early: [], core: [], boots: 0, situational: [] },
+          runes: { primaryTree: 0, secondaryTree: 0, perks: [] },
+          spells: [],
+          error: `ไม่พบข้อมูล Build สำหรับ "${champion}"${roleText ? ` ในตำแหน่ง ${role}` : ""}`,
+        };
+      }
+    }
+    
     console.error(`[Mobalytics] ❌ Failed to fetch ${champion}:`, error);
     return {
       success: false,

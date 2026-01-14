@@ -190,32 +190,84 @@ export const run = async ({ interaction }: SlashCommandProps) => {
             role: result.gameMode,
           }
         );
+        
+        // If image generation failed (returned null), it might mean champion doesn't exist
+        if (!attachment) {
+          console.warn(`[Build Command] ⚠️  Image generation failed for ${champion} - might be invalid champion or missing data`);
+        }
       }
     } catch (e) {
-      console.error("Failed to generate image", e);
+      console.error("[Build Command] Failed to generate image:", e);
+      // Check if it's a 403/404 error
+      const errorMsg = e instanceof Error ? e.message : String(e);
+      if (errorMsg.includes("403") || errorMsg.includes("404") || errorMsg.includes("rejected")) {
+        // This might mean champion doesn't exist
+        const errorEmbed = new EmbedBuilder()
+          .setColor(0xff4444)
+          .setTitle("❌ ไม่พบข้อมูล Build")
+          .setDescription(
+            `ไม่พบข้อมูล Build สำหรับ **${champion}**${role ? ` (${role})` : ""}\n\n` +
+            `**สาเหตุที่เป็นไปได้:**\n` +
+            `• ชื่อ Champion ไม่ถูกต้อง\n` +
+            `• ไม่มีข้อมูล Build สำหรับตำแหน่งนี้\n` +
+            `• ข้อมูลยังไม่พร้อมใช้งาน\n\n` +
+            `ลองตรวจสอบชื่อ Champion หรือลองตำแหน่งอื่น`
+          )
+          .setFooter({ text: "LoL Build Bot" })
+          .setTimestamp();
+        
+        await interaction.editReply({ content: "", embeds: [errorEmbed] });
+        return;
+      }
+    }
+
+    // Validate champion name and version
+    if (!result.championName) {
+      throw new Error("Champion name is missing from result");
+    }
+    if (!version) {
+      throw new Error("Game version is missing");
+    }
+
+    // Build Mobalytics URL (sanitize champion name)
+    const championNameForUrl = result.championName.toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "");
+    const rolePath = result.gameMode && result.gameMode !== "Popular"
+      ? "/" + result.gameMode.toLowerCase().replace("middle", "mid").replace("bot", "adc")
+      : "";
+    const mobalyticsUrl = `https://mobalytics.gg/lol/champions/${championNameForUrl}/build${rolePath}`;
+
+    // Get champion image URL (with validation)
+    const championImageUrl = getChampionImageUrl(version, result.championName);
+    
+    // Validate URLs before setting
+    if (!championImageUrl) {
+      console.warn(`[Build Command] ⚠️  Invalid champion image URL for ${result.championName} (version: ${version})`);
     }
 
     const embed = new EmbedBuilder()
       .setColor(0x0099ff)
       .setTitle(`📊 ${result.championName} Build`)
-      .setURL(
-        `https://mobalytics.gg/lol/champions/${result.championName.toLowerCase()}/build${
-          result.gameMode && result.gameMode !== "Popular"
-            ? "/" +
-              result.gameMode
-                .toLowerCase()
-                .replace("middle", "mid")
-                .replace("bot", "adc")
-            : ""
-        }`
-      )
       .setDescription(
-        `**Role:** ${result.gameMode}\n**Win Rate:** ${
+        `**Role:** ${result.gameMode || "N/A"}\n**Win Rate:** ${
           result.winRate || "N/A"
         } • **Matches:** ${result.pickRate || "N/A"}`
-      )
-      .setThumbnail(getChampionImageUrl(version, result.championName))
-      .addFields(
+      );
+
+    // Only set URL if valid
+    if (mobalyticsUrl && mobalyticsUrl.startsWith("http")) {
+      embed.setURL(mobalyticsUrl);
+    } else {
+      console.warn(`[Build Command] ⚠️  Invalid Mobalytics URL: ${mobalyticsUrl}`);
+    }
+
+    // Only set thumbnail if valid URL
+    if (championImageUrl && championImageUrl.startsWith("http")) {
+      embed.setThumbnail(championImageUrl);
+    } else {
+      console.warn(`[Build Command] ⚠️  Skipping thumbnail due to invalid URL`);
+    }
+
+    embed.addFields(
         {
           name: "📦 Core Items",
           value: itemsDisplay, // Keep text links as backup/accessible
