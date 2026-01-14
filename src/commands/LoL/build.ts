@@ -18,10 +18,6 @@ import type {
 } from "commandkit";
 import { getAverageBuild } from "../../services/scraper.js";
 import {
-  getChallengerBuild,
-  getChallengerBuildAllRegions,
-} from "../../services/riot.js";
-import {
   getLatestVersion,
   getItemImageUrl,
   getChampionImageUrl,
