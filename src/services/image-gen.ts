@@ -8,6 +8,7 @@ import {
   getSummonerSpellImageUrl,
   getRuneImageUrl,
   getRuneData,
+  getChampionData,
 } from "../utils/ddragon.js";
 
 const CANVAS_WIDTH = 1200;
@@ -550,6 +551,390 @@ export async function generateBuildImage(
     return new AttachmentBuilder(buffer, { name: "build-summary.png" });
   } catch (error) {
     console.error("Image generation failed:", error);
+    return null;
+  }
+}
+
+/**
+ * Generate a visual counter matchup image
+ */
+export async function generateCounterImage(
+  championName: string,
+  bestMatchups: { name: string; winRate: string; games: string }[],
+  worstMatchups: { name: string; winRate: string; games: string }[],
+  version: string
+): Promise<AttachmentBuilder | null> {
+  try {
+    const startTime = Date.now();
+    console.log(`[ImageGen] 🎨 Starting counter image generation for ${championName}...`);
+    
+    const COUNTER_CANVAS_WIDTH = 1400;
+    const COUNTER_CANVAS_HEIGHT = 1000;
+    const COUNTER_PADDING = 40;
+    
+    const canvas = createCanvas(COUNTER_CANVAS_WIDTH, COUNTER_CANVAS_HEIGHT);
+    const ctx = canvas.getContext("2d");
+
+    // -- Background --
+    const gradient = ctx.createLinearGradient(
+      0,
+      0,
+      COUNTER_CANVAS_WIDTH,
+      COUNTER_CANVAS_HEIGHT
+    );
+    gradient.addColorStop(0, "#1a1b26");
+    gradient.addColorStop(1, "#0f1016");
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, 0, COUNTER_CANVAS_WIDTH, COUNTER_CANVAS_HEIGHT);
+
+    // -- Header --
+    const formattedName = championName.replace(/\s+/g, "").replace(/[^a-zA-Z0-9]/g, "");
+    if (!formattedName) {
+      console.error(`[ImageGen] ❌ Invalid champion name: "${championName}"`);
+      return null;
+    }
+    
+    const champUrl = `https://ddragon.leagueoflegends.com/cdn/img/champion/splash/${formattedName}_0.jpg`;
+    const HEADER_H = 200;
+    
+    try {
+      const champImg = await loadImage(champUrl);
+      const w = COUNTER_CANVAS_WIDTH;
+      const sy = (champImg.height - (HEADER_H * champImg.width) / w) / 2;
+      ctx.drawImage(
+        champImg,
+        0,
+        sy,
+        champImg.width,
+        (HEADER_H * champImg.width) / w,
+        0,
+        0,
+        w,
+        HEADER_H
+      );
+    } catch (error: any) {
+      const errorMsg = error?.message || String(error);
+      if (errorMsg.includes("403") || errorMsg.includes("404") || errorMsg.includes("rejected")) {
+        console.error(`[ImageGen] ❌ Champion image not found (403/404): ${champUrl}`);
+        return null;
+      }
+      console.warn(`[ImageGen] ⚠️  Failed to load champion image: ${errorMsg}`);
+    }
+
+    // Gradient Overlay
+    const headerGradient = ctx.createLinearGradient(0, 0, 0, HEADER_H);
+    headerGradient.addColorStop(0, "rgba(26, 27, 38, 0.5)");
+    headerGradient.addColorStop(1, "#1a1b26");
+    ctx.fillStyle = headerGradient;
+    ctx.fillRect(0, 0, COUNTER_CANVAS_WIDTH, HEADER_H);
+
+    // Title
+    ctx.save();
+    ctx.shadowColor = "black";
+    ctx.shadowBlur = 10;
+    ctx.fillStyle = "#f0e6d2";
+    ctx.font = "bold 52px Sans";
+    ctx.fillText(`${championName} Counter`, COUNTER_PADDING + 20, 90);
+    ctx.font = "22px Sans";
+    ctx.fillStyle = "#a09b8c";
+    ctx.fillText("Who to pick / Who counters you", COUNTER_PADDING + 20, 125);
+    ctx.restore();
+
+    // -- Content Area --
+    const contentY = HEADER_H + COUNTER_PADDING;
+    const contentHeight = COUNTER_CANVAS_HEIGHT - contentY - COUNTER_PADDING;
+    const columnWidth = (COUNTER_CANVAS_WIDTH - COUNTER_PADDING * 3) / 2;
+    const separatorX = COUNTER_PADDING + columnWidth + COUNTER_PADDING;
+
+    // Draw Vertical Separator
+    ctx.strokeStyle = "#3c3c41";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(separatorX, contentY);
+    ctx.lineTo(separatorX, COUNTER_CANVAS_HEIGHT - COUNTER_PADDING);
+    ctx.stroke();
+
+    // -- Section Titles with icons --
+    // Easy Matchups Title (Green) - You Win
+    ctx.save();
+    ctx.font = "bold 30px Sans";
+    ctx.fillStyle = "#4ade80";
+    // Draw green circle icon
+    ctx.beginPath();
+    ctx.arc(COUNTER_PADDING + 16, contentY + 22, 12, 0, Math.PI * 2);
+    ctx.fill();
+    // Draw checkmark
+    ctx.strokeStyle = "#1a1b26";
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(COUNTER_PADDING + 10, contentY + 22);
+    ctx.lineTo(COUNTER_PADDING + 15, contentY + 27);
+    ctx.lineTo(COUNTER_PADDING + 24, contentY + 17);
+    ctx.stroke();
+    ctx.fillText("Easy Matchups", COUNTER_PADDING + 38, contentY + 30);
+    ctx.font = "16px Sans";
+    ctx.fillStyle = "#a09b8c";
+    ctx.fillText("(You counter them)", COUNTER_PADDING + 38, contentY + 52);
+    ctx.restore();
+    
+    // Hard Matchups Title (Red) - You Lose
+    ctx.save();
+    ctx.font = "bold 30px Sans";
+    ctx.fillStyle = "#f87171";
+    // Draw red circle icon
+    ctx.beginPath();
+    ctx.arc(separatorX + COUNTER_PADDING + 16, contentY + 22, 12, 0, Math.PI * 2);
+    ctx.fill();
+    // Draw X
+    ctx.strokeStyle = "#1a1b26";
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(separatorX + COUNTER_PADDING + 10, contentY + 16);
+    ctx.lineTo(separatorX + COUNTER_PADDING + 22, contentY + 28);
+    ctx.moveTo(separatorX + COUNTER_PADDING + 22, contentY + 16);
+    ctx.lineTo(separatorX + COUNTER_PADDING + 10, contentY + 28);
+    ctx.stroke();
+    ctx.fillText("Hard Matchups", separatorX + COUNTER_PADDING + 38, contentY + 30);
+    ctx.font = "16px Sans";
+    ctx.fillStyle = "#a09b8c";
+    ctx.fillText("(They counter you)", separatorX + COUNTER_PADDING + 38, contentY + 52);
+    ctx.restore();
+
+    // -- Champion Images and Names --
+    const championSize = 85;
+    const championSpacing = 125;
+    const startY = contentY + 60;
+    const maxChampions = 10;
+    const championsPerRow = 2;
+
+    // Get champion data to map names correctly
+    const championData = await getChampionData(version);
+    
+    // Helper function to find correct champion name from DDragon data
+    const findChampionName = (name: string): string | null => {
+      // First try exact match
+      if (championData[name]) {
+        return name;
+      }
+      
+      // Try case-insensitive match
+      const lowerName = name.toLowerCase();
+      for (const key in championData) {
+        if (key.toLowerCase() === lowerName) {
+          return key;
+        }
+      }
+      
+      // Try matching by display name
+      for (const key in championData) {
+        const champ = championData[key];
+        if (champ.name && champ.name.toLowerCase() === name.toLowerCase()) {
+          return key; // Return the ID (key)
+        }
+      }
+      
+      // Try fuzzy matching (remove spaces, special chars)
+      const normalized = name.replace(/[^a-zA-Z0-9]/g, "").toLowerCase();
+      for (const key in championData) {
+        const keyNormalized = key.replace(/[^a-zA-Z0-9]/g, "").toLowerCase();
+        if (keyNormalized === normalized) {
+          return key;
+        }
+        // Also check display name
+        const champ = championData[key];
+        if (champ.name) {
+          const champNormalized = champ.name.replace(/[^a-zA-Z0-9]/g, "").toLowerCase();
+          if (champNormalized === normalized) {
+            return key;
+          }
+        }
+      }
+      
+      return null;
+    };
+
+    // Pre-load all champion images with name mapping
+    const loadChampionImage = async (championName: string): Promise<any> => {
+      try {
+        // Find correct champion ID from DDragon data
+        const championId = findChampionName(championName);
+        if (!championId) {
+          console.warn(`[ImageGen] ⚠️  Could not find champion "${championName}" in DDragon data`);
+          return null;
+        }
+        
+        // Use champion ID directly for image URL (DDragon format: champion ID.png)
+        // Don't use getChampionImageUrl as it sanitizes, we need exact ID
+        const champImageUrl = `https://ddragon.leagueoflegends.com/cdn/${version}/img/champion/${championId}.png`;
+        if (champImageUrl && champImageUrl.startsWith("http")) {
+          try {
+            const img = await loadImage(champImageUrl);
+            console.log(`[ImageGen] ✅ Loaded image for "${championName}" -> "${championId}"`);
+            return img;
+          } catch (error: any) {
+            const errorMsg = error?.message || String(error);
+            if (errorMsg.includes("403") || errorMsg.includes("404")) {
+              console.warn(`[ImageGen] ⚠️  Image not found (403/404) for "${championName}" (ID: "${championId}"): ${champImageUrl}`);
+            } else {
+              console.warn(`[ImageGen] ⚠️  Failed to load image for "${championName}" (ID: "${championId}"): ${errorMsg}`);
+            }
+            return null;
+          }
+        } else {
+          console.warn(`[ImageGen] ⚠️  Invalid image URL for "${championName}" (ID: "${championId}")`);
+          return null;
+        }
+      } catch (error: any) {
+        console.warn(`[ImageGen] ⚠️  Error loading image for "${championName}": ${error?.message || String(error)}`);
+        return null;
+      }
+    };
+
+    // Load all images in parallel
+    const easyList = bestMatchups.slice(0, maxChampions);
+    const hardList = worstMatchups.slice(0, maxChampions);
+    
+    const easyImages = await Promise.all(
+      easyList.map(champ => loadChampionImage(champ.name))
+    );
+    const hardImages = await Promise.all(
+      hardList.map(champ => loadChampionImage(champ.name))
+    );
+
+    // Helper function to draw champion with pre-loaded image
+    const drawChampion = (
+      x: number,
+      y: number,
+      champion: { name: string; winRate: string },
+      index: number,
+      isEasy: boolean,
+      champImg: any
+    ) => {
+      const rankNum = index + 1;
+      
+      // Draw circle background with colored border for top 3
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(x + championSize / 2, y + championSize / 2, championSize / 2 + 4, 0, Math.PI * 2);
+      if (rankNum <= 3) {
+        // Gold, Silver, Bronze borders for top 3
+        const borderColors = ["#FFD700", "#C0C0C0", "#CD7F32"];
+        ctx.strokeStyle = borderColors[rankNum - 1];
+        ctx.lineWidth = 4;
+        ctx.stroke();
+      }
+      ctx.fillStyle = isEasy ? "rgba(74, 222, 128, 0.15)" : "rgba(248, 113, 113, 0.15)";
+      ctx.fill();
+      ctx.restore();
+      
+      if (champImg) {
+        // Draw champion image (circular)
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(x + championSize / 2, y + championSize / 2, championSize / 2, 0, Math.PI * 2);
+        ctx.clip();
+        ctx.drawImage(champImg, x, y, championSize, championSize);
+        ctx.restore();
+      } else {
+        // Fallback: draw placeholder circle
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(x + championSize / 2, y + championSize / 2, championSize / 2, 0, Math.PI * 2);
+        ctx.fillStyle = "#3c3c41";
+        ctx.fill();
+        ctx.strokeStyle = isEasy ? "#4ade80" : "#f87171";
+        ctx.lineWidth = 2;
+        ctx.stroke();
+        ctx.restore();
+      }
+
+      // Draw rank badge on top-left of champion image
+      ctx.save();
+      const badgeSize = 28;
+      const badgeX = x - 5;
+      const badgeY = y - 5;
+      
+      // Badge background with color based on rank
+      ctx.beginPath();
+      ctx.arc(badgeX + badgeSize / 2, badgeY + badgeSize / 2, badgeSize / 2, 0, Math.PI * 2);
+      if (rankNum === 1) {
+        ctx.fillStyle = "#FFD700"; // Gold
+      } else if (rankNum === 2) {
+        ctx.fillStyle = "#C0C0C0"; // Silver
+      } else if (rankNum === 3) {
+        ctx.fillStyle = "#CD7F32"; // Bronze
+      } else {
+        ctx.fillStyle = "#4a4a4a"; // Gray for others
+      }
+      ctx.fill();
+      
+      // Draw rank number
+      ctx.font = "bold 16px Sans";
+      ctx.fillStyle = rankNum <= 3 ? "#000000" : "#ffffff";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText(rankNum.toString(), badgeX + badgeSize / 2, badgeY + badgeSize / 2);
+      ctx.restore();
+
+      // Draw champion name below image
+      ctx.save();
+      ctx.font = "bold 16px Sans";
+      ctx.fillStyle = "#f0e6d2";
+      ctx.textAlign = "center";
+      const nameY = y + championSize + 20;
+      const centerX = x + championSize / 2;
+      let displayName = champion.name;
+      const maxNameWidth = championSize + 40;
+      ctx.font = "bold 16px Sans";
+      if (ctx.measureText(displayName).width > maxNameWidth) {
+        while (ctx.measureText(displayName + "...").width > maxNameWidth && displayName.length > 0) {
+          displayName = displayName.slice(0, -1);
+        }
+        displayName += "...";
+      }
+      ctx.fillText(displayName, centerX, nameY);
+      ctx.restore();
+      
+      // Draw win rate below champion name
+      ctx.save();
+      ctx.font = "bold 18px Sans";
+      ctx.textAlign = "center";
+      const winRateText = champion.winRate || "N/A";
+      const displayWinRate = winRateText && winRateText !== "N/A" 
+        ? (winRateText.includes("%") ? winRateText : winRateText + "%")
+        : "N/A";
+      const winRateY = nameY + 22;
+      
+      // Draw win rate text with color
+      ctx.fillStyle = isEasy ? "#4ade80" : "#f87171";
+      ctx.fillText(displayWinRate, centerX, winRateY);
+      ctx.restore();
+    };
+
+    // Draw Easy Matchups (left column)
+    easyList.forEach((champ, i) => {
+      const row = Math.floor(i / championsPerRow);
+      const col = i % championsPerRow;
+      const x = COUNTER_PADDING + col * (championSize + 140);
+      const y = startY + row * championSpacing;
+      drawChampion(x, y, champ, i, true, easyImages[i]);
+    });
+
+    // Draw Hard Matchups (right column)
+    hardList.forEach((champ, i) => {
+      const row = Math.floor(i / championsPerRow);
+      const col = i % championsPerRow;
+      const x = separatorX + COUNTER_PADDING + col * (championSize + 140);
+      const y = startY + row * championSpacing;
+      drawChampion(x, y, champ, i, false, hardImages[i]);
+    });
+
+    const elapsed = Date.now() - startTime;
+    console.log(`[ImageGen] ✅ Counter image generated in ${elapsed}ms`);
+    const buffer = await canvas.encode("png");
+    return new AttachmentBuilder(buffer, { name: "counter-matchups.png" });
+  } catch (error) {
+    console.error("[ImageGen] Counter image generation failed:", error);
     return null;
   }
 }
