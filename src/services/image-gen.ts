@@ -1028,3 +1028,180 @@ export async function generateCounterImage(
     return null;
   }
 }
+
+/**
+ * Generate a visual tier list image showing ALL roles
+ */
+export async function generateTierListImage(
+  allRolesData: Record<string, { name: string; tier: string }[]>,
+  version: string,
+): Promise<AttachmentBuilder | null> {
+  try {
+    const startTime = Date.now();
+    console.log(
+      `[ImageGen] 🎨 Starting tier list image generation for ALL roles...`,
+    );
+
+    const TIER_LIST_WIDTH = 1400;
+    const TIER_LIST_HEIGHT = 900;
+    const TIER_PADDING = 30;
+    const ICON_SIZE = 55;
+    const ICON_GAP = 8;
+
+    const canvas = createCanvas(TIER_LIST_WIDTH, TIER_LIST_HEIGHT);
+    const ctx = canvas.getContext("2d");
+
+    // Background
+    const gradient = ctx.createLinearGradient(
+      0,
+      0,
+      TIER_LIST_WIDTH,
+      TIER_LIST_HEIGHT,
+    );
+    gradient.addColorStop(0, "#1a1b26");
+    gradient.addColorStop(1, "#0f1016");
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, 0, TIER_LIST_WIDTH, TIER_LIST_HEIGHT);
+
+    // Header
+    ctx.fillStyle = "#f0e6d2";
+    ctx.font = "bold 42px Sans";
+    ctx.fillText(`📊 Tier List - All Roles`, TIER_PADDING, 50);
+
+    ctx.fillStyle = "#a09b8c";
+    ctx.font = "20px Sans";
+    ctx.fillText(`Meta Patch ${version}`, TIER_PADDING, 80);
+
+    // Role colors and emojis
+    const roleConfig: Record<string, { color: string; emoji: string }> = {
+      Top: { color: "#ff6b6b", emoji: "🗡️" },
+      Jungle: { color: "#2ed573", emoji: "🌲" },
+      Mid: { color: "#a55eea", emoji: "🔮" },
+      Adc: { color: "#ffa502", emoji: "🏹" },
+      Support: { color: "#1e90ff", emoji: "🛡️" },
+    };
+
+    const roles = ["Top", "Jungle", "Mid", "Adc", "Support"];
+    let currentY = 120;
+    const ROW_HEIGHT = 150;
+
+    // Get champion data for name mapping
+    const championData = await getChampionData(version);
+
+    for (const role of roles) {
+      const champions = allRolesData[role] || [];
+      // Filter to S+ and S tier only (top champions)
+      const topChamps = champions
+        .filter((c) => c.tier === "S+" || c.tier === "S")
+        .slice(0, 12);
+      if (topChamps.length === 0) continue;
+
+      const config = roleConfig[role] || { color: "#555", emoji: "📌" };
+
+      // Role label background
+      ctx.fillStyle = config.color;
+      ctx.fillRect(TIER_PADDING, currentY, 100, ROW_HEIGHT - 20);
+
+      // Role label text
+      ctx.fillStyle = "#fff";
+      ctx.font = "bold 24px Sans";
+      ctx.textAlign = "center";
+      ctx.fillText(config.emoji, TIER_PADDING + 50, currentY + 45);
+      ctx.font = "bold 16px Sans";
+      ctx.fillText(role, TIER_PADDING + 50, currentY + 70);
+      ctx.textAlign = "left";
+
+      // Champion row background
+      ctx.fillStyle = "rgba(30, 35, 40, 0.8)";
+      ctx.fillRect(
+        TIER_PADDING + 110,
+        currentY,
+        TIER_LIST_WIDTH - TIER_PADDING * 2 - 110,
+        ROW_HEIGHT - 20,
+      );
+
+      // Load and draw champion icons
+      await Promise.all(
+        topChamps.map(
+          async (champ: { name: string; tier: string }, idx: number) => {
+            const x = TIER_PADDING + 120 + idx * (ICON_SIZE + ICON_GAP);
+            const y = currentY + 15;
+
+            try {
+              // Find champion ID from name
+              let champId = champ.name.replace(/[^a-zA-Z0-9]/g, "");
+              for (const key in championData) {
+                if (
+                  key.toLowerCase() ===
+                  champ.name.toLowerCase().replace(/[^a-z0-9]/g, "")
+                ) {
+                  champId = key;
+                  break;
+                }
+                if (
+                  championData[key].name?.toLowerCase() ===
+                  champ.name.toLowerCase()
+                ) {
+                  champId = key;
+                  break;
+                }
+              }
+
+              const champUrl = `https://ddragon.leagueoflegends.com/cdn/${version}/img/champion/${champId}.png`;
+              const img = await loadImage(champUrl);
+
+              // Draw icon with border
+              ctx.save();
+              ctx.beginPath();
+              ctx.roundRect(x, y, ICON_SIZE, ICON_SIZE, 8);
+              ctx.clip();
+              ctx.drawImage(img, x, y, ICON_SIZE, ICON_SIZE);
+              ctx.restore();
+
+              // Border color based on tier
+              ctx.strokeStyle = champ.tier === "S+" ? "#ff6b6b" : "#ffa502";
+              ctx.lineWidth = 2;
+              ctx.beginPath();
+              ctx.roundRect(x, y, ICON_SIZE, ICON_SIZE, 8);
+              ctx.stroke();
+
+              // Champion name below icon
+              ctx.fillStyle = "#ccc";
+              ctx.font = "10px Sans";
+              ctx.textAlign = "center";
+              const shortName =
+                champ.name.length > 7
+                  ? champ.name.slice(0, 6) + ".."
+                  : champ.name;
+              ctx.fillText(shortName, x + ICON_SIZE / 2, y + ICON_SIZE + 12);
+              ctx.textAlign = "left";
+            } catch {
+              // Placeholder
+              ctx.fillStyle = "#333";
+              ctx.fillRect(x, y, ICON_SIZE, ICON_SIZE);
+            }
+          },
+        ),
+      );
+
+      currentY += ROW_HEIGHT;
+    }
+
+    // Footer
+    ctx.fillStyle = "#666";
+    ctx.font = "14px Sans";
+    ctx.fillText(
+      `Source: Mobalytics | LoL v${version}`,
+      TIER_PADDING,
+      TIER_LIST_HEIGHT - 20,
+    );
+
+    const elapsed = Date.now() - startTime;
+    console.log(`[ImageGen] ✅ Tier list image generated in ${elapsed}ms`);
+    const buffer = await canvas.encode("png");
+    return new AttachmentBuilder(buffer, { name: "tier-list.png" });
+  } catch (error) {
+    console.error("[ImageGen] Tier list image generation failed:", error);
+    return null;
+  }
+}
