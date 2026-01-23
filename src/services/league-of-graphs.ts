@@ -37,8 +37,8 @@ interface LOGBuildData {
 export async function fetchChampionBuild(
   champion: string,
   gameVersion: string,
-  role?: string
-): Promise<LOGBuildData | null> {
+  role?: string,
+): Promise<LOGBuildData[] | null> {
   const cleanName = champion.toLowerCase().replace(/[^a-z0-9]/g, "");
   const roleKey = role ? `-${role}` : "";
   const cachePath = path.join(CACHE_DIR, `${cleanName}${roleKey}.json`);
@@ -46,7 +46,7 @@ export async function fetchChampionBuild(
   console.log(
     `[Scraper] ⏱️ START fetching ${champion}${
       role ? ` (${role})` : ""
-    } (v${gameVersion})...`
+    } (v${gameVersion})...`,
   );
   const startTime = Date.now();
 
@@ -58,7 +58,10 @@ export async function fetchChampionBuild(
 
     // Read cache first to check version
     const data = await fs.readFile(cachePath, "utf-8");
-    const cached = JSON.parse(data);
+    const cached = JSON.parse(data) as {
+      dataVersion: string;
+      builds: LOGBuildData[];
+    };
 
     // Validate:
     // 1. 24 Hour TTL
@@ -66,30 +69,27 @@ export async function fetchChampionBuild(
     // 3. Version Match (if valid version provided)
     const isFresh = now - stats.mtimeMs < 24 * 60 * 60 * 1000;
     const isComplete =
-      cached.items && cached.items.starter && cached.items.starter.length > 0;
+      cached.builds &&
+      cached.builds.length > 0 &&
+      cached.builds[0].items.starter.length > 0;
     const isVersionMatch = !gameVersion || cached.dataVersion === gameVersion;
 
     if (isFresh && isComplete && isVersionMatch) {
-      // Sanitize Cached Data
-      cached.items.starter = cached.items.starter.slice(0, 3);
-      cached.items.core = cached.items.core.slice(0, 3);
-      cached.items.boots = cached.items.boots.slice(0, 1);
-      cached.items.situational = cached.items.situational.slice(0, 3);
       console.log(
         `[Scraper] ⚡ Using cached data for ${champion}${
           role ? ` (${role})` : ""
-        } (v${cached.dataVersion})`
+        } (v${cached.dataVersion})`,
       );
-      return cached;
+      return cached.builds;
     }
 
     if (!isVersionMatch) {
       console.log(
-        `[Scraper] 🔄 Cache version mismatch (Cached: ${cached.dataVersion} vs Current: ${gameVersion}). Re-fetching...`
+        `[Scraper] 🔄 Cache version mismatch (Cached: ${cached.dataVersion} vs Current: ${gameVersion}). Re-fetching...`,
       );
     } else if (!isComplete || !isFresh) {
       console.log(
-        `[Scraper] ⚠️ Cache expired/incomplete for ${champion}, refetching...`
+        `[Scraper] ⚠️ Cache expired/incomplete for ${champion}, refetching...`,
       );
     }
   } catch (e) {
@@ -114,208 +114,235 @@ export async function fetchChampionBuild(
     const $ = cheerio.load(data);
     console.log(`[Scraper] ✅ Page loaded. Body length: ${data.length}`);
 
-    const result: LOGBuildData = {
-      role: "Unknown",
-      winRate: "N/A",
-      pickRate: "N/A",
-      items: { starter: [], boots: [], core: [], situational: [] },
-      runes: { primary: 0, secondary: 0, perks: [] },
-      spells: [],
-    };
+    // Common Meta Stats (Role, WinRate, PickRate) - these are usually global for the role
+    let commonRole = "Unknown";
+    let commonWinRate = "N/A";
+    let commonPickRate = "N/A";
 
-    // --- Meta Stats ---
-    // Find the Role .box and parse: "Role Top Popularity: 69.4% Winrate: 50.6%"
     const roleBox = $(".box")
       .filter((_, el) => $(el).text().includes("Role"))
       .first();
     if (roleBox.length) {
       const roleText = roleBox.text();
-
-      // Parse Role
-      if (roleText.includes("Top")) result.role = "Top";
-      else if (roleText.includes("Jungle")) result.role = "Jungle";
-      else if (roleText.includes("Mid")) result.role = "Mid";
+      if (roleText.includes("Top")) commonRole = "Top";
+      else if (roleText.includes("Jungle")) commonRole = "Jungle";
+      else if (roleText.includes("Mid")) commonRole = "Mid";
       else if (roleText.includes("ADC") || roleText.includes("Bot"))
-        result.role = "ADC";
-      else if (roleText.includes("Support")) result.role = "Support";
+        commonRole = "ADC";
+      else if (roleText.includes("Support")) commonRole = "Support";
 
-      // Parse Win Rate
       const wrMatch = roleText.match(/Winrate:\s*([\d.]+%)/i);
-      if (wrMatch) result.winRate = wrMatch[1];
+      if (wrMatch) commonWinRate = wrMatch[1];
 
-      // Parse Pick Rate (Popularity)
       const prMatch = roleText.match(/Popularity:\s*([\d.]+%)/i);
-      if (prMatch) result.pickRate = prMatch[1];
-
-      console.log(
-        `[Scraper] 📊 Meta: Role=${result.role}, WinRate=${result.winRate}, PickRate=${result.pickRate}`
-      );
+      if (prMatch) commonPickRate = prMatch[1];
     }
 
     // --- Helper to extract IDs from Images ---
     const extractId = (imgSrc?: string): number => {
       if (!imgSrc) return 0;
-      // /img/items/15.4/6672.png -> 6672
-      // /img/perks/8000.png -> 8000
       const match = imgSrc.match(/\/(\d+)\.png/);
       return match ? parseInt(match[1]) : 0;
     };
 
-    // --- Items ---
-
-    // Helper to find items following a specific header text (e.g., "Starting Build")
-    // Uses the NEXT SIBLING pattern: <h3>Header</h3> <div class="iconsRow">...items...</div>
-    const getImagesAfterHeader = (headerKeywords: string[]): number[] => {
+    // Helper: Extract items from a container element
+    const extractItemsFromContainer = (container: any): number[] => {
       const ids: number[] = [];
-
-      // Strategy: Find <h3 class="box-title"> matching keyword, then get .next() sibling
-      for (const keyword of headerKeywords) {
-        const header = $("h3.box-title, .box-title")
-          .filter((_, el) => $(el).text().trim().includes(keyword))
-          .first();
-
-        if (header.length) {
-          // Get the NEXT sibling (should be .iconsRow or similar)
-          const container = header.next();
-
-          if (container.length) {
-            // Extract items from this container
-            container
-              .find("[class*='item-'], img")
-              .each((_: number, el: any) => {
-                const className = $(el).attr("class") || "";
-                const src = $(el).attr("src") || $(el).attr("data-src") || "";
-
-                // 1. Try CSS Sprite Class (e.g. item-1056-36)
-                const classMatch = className.match(/item-(\d+)/);
-                if (classMatch) {
-                  const id = parseInt(classMatch[1], 10);
-                  if (id > 0) ids.push(id);
-                  return;
-                }
-
-                // 2. Try URL pattern (e.g. /items/1056.png)
-                if (src && (src.includes("/items/") || src.includes("item"))) {
-                  const id = extractId(src);
-                  if (id > 0) ids.push(id);
-                }
-              });
-            break; // Found matching header, done
-          }
+      container.find("[class*='item-'], img").each((_: number, el: any) => {
+        const className = $(el).attr("class") || "";
+        const src = $(el).attr("src") || $(el).attr("data-src") || "";
+        const classMatch = className.match(/item-(\d+)/);
+        if (classMatch) {
+          const id = parseInt(classMatch[1], 10);
+          if (id > 0) ids.push(id);
+          return;
         }
-      }
-
+        if (src && (src.includes("/items/") || src.includes("item"))) {
+          const id = extractId(src);
+          if (id > 0) ids.push(id);
+        }
+      });
       return Array.from(new Set(ids)).filter((id) => id !== 0);
     };
 
-    result.items.starter = getImagesAfterHeader(["Starting", "Starter"]).slice(
-      0,
-      3
+    const builds: LOGBuildData[] = [];
+
+    // Find all "Core Items" headers to identify distinct builds
+    // Usually:
+    // 1. "Core Items" (Most Popular)
+    // 2. "Core Items" (Highest Win Rate)
+    const coreHeaders = $("h3.box-title, .box-title").filter(
+      (_, el) =>
+        $(el).text().trim().includes("Core Items") ||
+        $(el).text().trim().includes("Core Build"),
     );
-    result.items.core = getImagesAfterHeader([
-      "Core Items",
-      "Core Build",
-    ]).slice(1, 4); // Skip first item (boots), take next 3
-    result.items.boots = getImagesAfterHeader(["Boots"]).slice(0, 1);
-    result.items.situational = getImagesAfterHeader([
-      "Final Item",
-      "Situational",
-    ]).slice(0, 3);
-    console.log(
-      `[Scraper] 📦 Items found - Starter: ${result.items.starter.length}, Core: ${result.items.core.length}`
-    );
-    // LOG runes use CSS sprites with class like "perk-8005-36"
-    // SELECTED runes have parent WITHOUT "opacity: 0.2" style
-    // UNSELECTED runes have parent WITH "opacity: 0.2" style
 
-    const runesBox = $(".box")
-      .filter((_, el) => $(el).text().includes("Runes"))
-      .first();
-    if (runesBox.length) {
-      const STYLES = [8000, 8100, 8200, 8300, 8400];
-      const selectedPerkIds: number[] = [];
+    console.log(`[Scraper] Found ${coreHeaders.length} build variants.`);
 
-      // Extract SELECTED perks only (parent has no opacity: 0.2)
-      runesBox.find("[class*='perk-']").each((_, el) => {
-        const className = $(el).attr("class") || "";
-        const parentStyle = $(el).parent().attr("style") || "";
+    if (coreHeaders.length === 0) {
+      // Fallback or scraping failed
+      console.warn("[Scraper] No build sections found!");
+      return null;
+    }
 
-        // Skip if parent has opacity (means unselected)
-        if (parentStyle.includes("opacity")) {
-          return;
-        }
+    // Iterate through each build variant found
+    coreHeaders.each((index, el) => {
+      // Limit to 3 builds max
+      if (index >= 3) return;
 
-        const match = className.match(/perk-(\d+)/);
-        if (match) {
-          selectedPerkIds.push(parseInt(match[1], 10));
-        }
-      });
+      const headerText = $(el).text().trim(); // e.g. "Core Items - Use rate: 58.0% - Winrate: 51.2%"
+      const container = $(el).next();
 
-      // Extract tree icons from img src (always visible, no opacity check needed)
-      runesBox.find("img").each((_, img) => {
-        const src = $(img).attr("src") || "";
-        if (src.includes("/perks/")) {
-          const match = src.match(/(\d+)\.png/);
-          if (match) {
-            const id = parseInt(match[1], 10);
-            if (STYLES.includes(id)) {
-              selectedPerkIds.push(id);
+      // Parse build specific stats if available in header
+      let buildWinRate = commonWinRate;
+      const wrMatch = headerText.match(/Winrate:\s*([\d.]+%)/i);
+      if (wrMatch) buildWinRate = wrMatch[1];
+
+      // Construct items
+      const core = extractItemsFromContainer(container).slice(1, 4); // Skip boots usually first? No, LOG usually puts boots in "Boots" section.
+      // Wait, LOG structure:
+      // Header: Boots -> Icons
+      // Header: Core Items -> Icons
+      // They are separate boxes often.
+      // But simpler strategy: Extract EVERYTHING from this column if possible.
+      // Actually, LOG lists usually go: Starter -> Boots -> Core -> Situational
+      // We need to find the "Related" sections for THIS build index.
+      // Unfortunately LOG structure is a bit flat.
+      // Heuristic: The "Starter", "Boots", "Runes" usually appear in the SAME column or section sequence.
+      // For simplicity in this iteration, we will assume:
+      // Build 1 = 1st Starter, 1st Boots, 1st Core, 1st Runes
+      // Build 2 = 2nd Starter, 2nd Boots, 2nd Core, 2nd Runes (if they exist)
+
+      // Helper to get Nth occurrence of a section
+      const getNthSectionItems = (keywords: string[], n: number): number[] => {
+        const headers = $("h3.box-title, .box-title").filter((_, h) =>
+          keywords.some((k) => $(h).text().trim().includes(k)),
+        );
+        // If we requests 2nd build (index 1) but only 1 header exists, fallback to 0
+        const targetHeader = headers.eq(index < headers.length ? index : 0);
+        if (!targetHeader.length) return [];
+        return extractItemsFromContainer(targetHeader.next());
+      };
+
+      const starter = getNthSectionItems(["Starting", "Starter"], index).slice(
+        0,
+        3,
+      );
+      const boots = getNthSectionItems(["Boots"], index).slice(0, 1);
+      // Core is already found via loop, but let's re-use helper for consistency or just use `core` variable
+      // The `core` variable above used `container` which IS the Nth Core section.
+      // But wait, LoLGraphs sometimes puts boots INSIDE core line? No, usually separate.
+      // Let's stick to the helper for clarity.
+      const finalCore = extractItemsFromContainer(container).slice(0, 4); // Take up to 4 to be safe
+      const situational = getNthSectionItems(
+        ["Situational", "Final"],
+        index,
+      ).slice(0, 3);
+
+      const currentBuild: LOGBuildData = {
+        role: commonRole,
+        winRate: buildWinRate,
+        pickRate: commonPickRate, // Could parse use rate from header too
+        items: {
+          starter,
+          boots,
+          core: finalCore,
+          situational,
+        },
+        runes: { primary: 0, secondary: 0, perks: [] },
+        spells: [],
+      };
+
+      // --- Runes ---
+      // Same logic: Get Nth Runes box
+      const runesHeaders = $(".box").filter((_, box) =>
+        $(box).text().includes("Runes"),
+      );
+      const runesBox = runesHeaders.eq(index < runesHeaders.length ? index : 0);
+
+      if (runesBox.length) {
+        const STYLES = [8000, 8100, 8200, 8300, 8400];
+        const selectedPerkIds: number[] = [];
+
+        runesBox.find("[class*='perk-']").each((_, p) => {
+          const pClass = $(p).attr("class") || "";
+          const pStyle = $(p).parent().attr("style") || "";
+          if (!pStyle.includes("opacity")) {
+            const m = pClass.match(/perk-(\d+)/);
+            if (m) selectedPerkIds.push(parseInt(m[1], 10));
+          }
+        });
+        runesBox.find("img").each((_, img) => {
+          const src = $(img).attr("src") || "";
+          if (src.includes("/perks/")) {
+            const match = src.match(/(\d+)\.png/);
+            if (match) {
+              const id = parseInt(match[1], 10);
+              if (STYLES.includes(id)) selectedPerkIds.push(id);
             }
           }
+        });
+
+        const foundStyles = selectedPerkIds.filter((id) => STYLES.includes(id));
+        const foundPerks = selectedPerkIds.filter((id) => !STYLES.includes(id));
+
+        if (foundStyles.length >= 2) {
+          currentBuild.runes.primary = foundStyles[0];
+          currentBuild.runes.secondary = foundStyles[1];
+        } else if (foundStyles.length === 1) {
+          currentBuild.runes.primary = foundStyles[0];
+          currentBuild.runes.secondary = 8000;
         }
-      });
-
-      // Separate styles from perks
-      const foundStyles = selectedPerkIds.filter((id) => STYLES.includes(id));
-      const foundPerks = selectedPerkIds.filter((id) => !STYLES.includes(id));
-
-      if (foundStyles.length >= 2) {
-        result.runes.primary = foundStyles[0];
-        result.runes.secondary = foundStyles[1];
-      } else if (foundStyles.length === 1) {
-        result.runes.primary = foundStyles[0];
-        result.runes.secondary = 8000; // Default fallback
+        currentBuild.runes.perks = Array.from(new Set(foundPerks));
       }
 
-      // Remove duplicates and store perks
-      result.runes.perks = Array.from(new Set(foundPerks));
-      console.log(
-        `[Scraper] 🔮 Runes found - Primary: ${result.runes.primary}, Secondary: ${result.runes.secondary}, Perks: ${result.runes.perks.length}`
+      // --- Spells ---
+      const spellsHeaders = $(".box").filter((_, box) =>
+        $(box).text().includes("Summoner Spells"),
       );
-    }
+      const spellBox = spellsHeaders.eq(
+        index < spellsHeaders.length ? index : 0,
+      );
+      if (spellBox.length) {
+        const sp: number[] = [];
+        spellBox.find("[class*='spell-']").each((_, s) => {
+          const c = $(s).attr("class") || "";
+          const m = c.match(/spell-(\d+)/);
+          if (m) sp.push(parseInt(m[1], 10));
+        });
+        currentBuild.spells = Array.from(new Set(sp)).slice(0, 2);
+      }
 
-    // --- Spells ---
-    // LOG uses CSS sprites with class like "spell-4-48" (Flash = 4, Teleport = 12)
-    const spellBox = $(".box")
-      .filter((_, el) => $(el).text().includes("Summoner Spells"))
-      .first();
-    if (spellBox.length) {
-      const spells: number[] = [];
+      builds.push(currentBuild);
+    });
 
-      // Extract from class names (CSS Sprites)
-      spellBox.find("[class*='spell-']").each((_, el) => {
-        const className = $(el).attr("class") || "";
-        const match = className.match(/spell-(\d+)/);
-        if (match) {
-          spells.push(parseInt(match[1], 10));
-        }
-      });
-
-      result.spells = Array.from(new Set(spells)).slice(0, 2);
-      console.log(`[Scraper] ✨ Spells found: ${result.spells.join(", ")}`);
-    }
-
-    const elapsed = Date.now() - startTime;
     console.log(
-      `[Scraper] ✅ DONE in ${elapsed}ms - Items: ${result.items.starter.length}/${result.items.core.length}/${result.items.boots.length}`
+      `[Scraper] ✅ DONE in ${Date.now() - startTime}ms - Found ${builds.length} builds`,
     );
-    return result;
+
+    // Save to cache
+    try {
+      await fs.writeFile(
+        cachePath,
+        JSON.stringify(
+          {
+            dataVersion: gameVersion,
+            builds: builds,
+          },
+          null,
+          2,
+        ),
+      );
+    } catch (err) {
+      console.error("[Scraper] Failed to write cache", err);
+    }
+
+    return builds;
   } catch (error) {
     console.error(`[Scraper] ❌ Failed to fetch ${champion}:`, error);
     return null;
   }
 }
-
 // Counter Data Interface
 interface CounterMatchup {
   name: string;
@@ -407,7 +434,7 @@ export async function fetchCounterData(champion: string): Promise<CounterData> {
     });
 
     console.log(
-      `[Counter] ✅ Found ${winsAgainst.length} wins, ${losesAgainst.length} loses`
+      `[Counter] ✅ Found ${winsAgainst.length} wins, ${losesAgainst.length} loses`,
     );
 
     return {

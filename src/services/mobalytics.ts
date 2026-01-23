@@ -48,70 +48,53 @@ export interface MobalyticsCounterData {
 /**
  * Extract build data from __PRELOADED_STATE__ JSON
  */
-function extractBuildFromState(html: string): MobalyticsBuildData | null {
+function extractBuildFromState(html: string): MobalyticsBuildData[] {
   try {
-    // Find the __PRELOADED_STATE__ script content
     const stateMatch = html.match(
-      /window\.__PRELOADED_STATE__\s*=\s*(\{[\s\S]*?\});\s*<\/script>/
+      /window\.__PRELOADED_STATE__\s*=\s*(\{[\s\S]*?\});\s*<\/script>/,
     );
     if (!stateMatch) {
       console.log("[Mobalytics] __PRELOADED_STATE__ not found");
-      return null;
+      return [];
     }
 
     const stateStr = stateMatch[1];
 
-    // ------------------------------------------------------------------
-    // Strategy: Find all "LolChampionBuild" objects in the text
-    // and parse them individually to find the one with the highest match count
-    // matching the requested role (if specified) or just highest overall.
-    // ------------------------------------------------------------------
-
-    let bestBuild = {
-      matchCountNum: -1,
-      winRate: "N/A",
-      matchCountStr: "N/A",
-      spells: [] as number[],
-      runes: {
-        primaryTree: 0,
-        secondaryTree: 0,
-        perks: [] as number[],
-      },
+    interface ParsedBuild {
+      matchCountNum: number;
+      winRate: string;
+      matchCountStr: string;
+      spells: number[];
+      runes: { primaryTree: number; secondaryTree: number; perks: number[] };
       items: {
-        starter: [] as number[],
-        early: [] as number[],
-        core: [] as number[],
-        boots: 0,
-        situational: [] as number[],
-      },
-      role: "Popular",
-    };
+        starter: number[];
+        early: number[];
+        core: number[];
+        boots: number;
+        situational: number[];
+      };
+      role: string;
+    }
 
-    // Find all occurrences of LolChampionBuild properties start
-    // We look for __typename or just the start of the object structure common in Mobalytics
-    // Pattern: "__typename":"LolChampionBuild"
-    const buildIndices = [];
+    const allBuilds: ParsedBuild[] = [];
+
     const buildRegex = /"__typename":"LolChampionBuild"/g;
+    const buildIndices: number[] = [];
     let match;
     while ((match = buildRegex.exec(stateStr)) !== null) {
       buildIndices.push(match.index);
     }
 
     if (buildIndices.length === 0) {
-      console.log("[Mobalytics] No LolChampionBuild objects found via regex");
-      return null;
+      console.log("[Mobalytics] No LolChampionBuild objects found");
+      return [];
     }
 
-    console.log(
-      `[Mobalytics] Found ${buildIndices.length} potential builds to analyze`
-    );
+    console.log(`[Mobalytics] Found ${buildIndices.length} potential builds`);
 
     for (const index of buildIndices) {
-      // Extract a large enough chunk to cover the whole build object
-      // 5000 chars should be enough for one build object flattened
       const chunk = stateStr.substring(index, index + 5000);
 
-      // 1. Extract Match Count & Wins
       const statsMatch = chunk.match(/"stats":\s*(\{[^}]+\})/);
       if (!statsMatch) continue;
 
@@ -126,125 +109,111 @@ function extractBuildFromState(html: string): MobalyticsBuildData | null {
 
       if (matches <= 0) continue;
 
-      // 2. Extract Role
       const roleMatch = chunk.match(/"role":"([A-Z]+)"/);
       let buildRole = "Popular";
-      let rawRole = "MID"; // default
       if (roleMatch) {
-        rawRole = roleMatch[1];
         buildRole =
-          rawRole.charAt(0).toUpperCase() + rawRole.slice(1).toLowerCase();
+          roleMatch[1].charAt(0).toUpperCase() +
+          roleMatch[1].slice(1).toLowerCase();
       }
 
-      // Check if this build matches our requested role logic (if we could pass it down)
-      // Since we don't have the requested role inside this function easily without changing signature,
-      // we rely on the fact that the page URL usually filters the builds to the requested role mostly,
-      // OR we just pick the absolutely highest match count which IS the most popular build.
+      const build: ParsedBuild = {
+        matchCountNum: matches,
+        matchCountStr: matches.toLocaleString(),
+        winRate: ((wins / matches) * 100).toFixed(1) + "%",
+        role: buildRole,
+        spells: [],
+        runes: { primaryTree: 0, secondaryTree: 0, perks: [] },
+        items: { starter: [], early: [], core: [], boots: 0, situational: [] },
+      };
 
-      // Improvement: If we want to be strict, we really should prefer the role that appears in the URL.
-      // But for now, "Highest Match Count" is the user's explicit request.
+      const spellsMatch = chunk.match(/"spells":\[(\d+),(\d+)\]/);
+      build.spells = spellsMatch
+        ? [parseInt(spellsMatch[1]), parseInt(spellsMatch[2])]
+        : [4, 12];
 
-      if (matches > bestBuild.matchCountNum) {
-        // Found a better build!
-        bestBuild.matchCountNum = matches;
-        bestBuild.matchCountStr = matches.toLocaleString();
-        bestBuild.winRate = ((wins / matches) * 100).toFixed(1) + "%";
-        bestBuild.role = buildRole;
+      const perksIDsMatch = chunk.match(/"IDs":\[([\d,]+)\]/);
+      const styleMatch = chunk.match(/"style":(\d+)/);
+      const subStyleMatch = chunk.match(/"subStyle":(\d+)/);
 
-        // 3. Extract Spells
-        const spellsMatch = chunk.match(/"spells":\[(\d+),(\d+)\]/);
-        bestBuild.spells = spellsMatch
-          ? [parseInt(spellsMatch[1]), parseInt(spellsMatch[2])]
-          : [4, 12]; // Default
-
-        // 4. Extract Perks
-        const perksIDsMatch = chunk.match(/"IDs":\[([\d,]+)\]/);
-        const styleMatch = chunk.match(/"style":(\d+)/);
-        const subStyleMatch = chunk.match(/"subStyle":(\d+)/);
-
-        if (perksIDsMatch) {
-          bestBuild.runes.perks = perksIDsMatch[1]
-            .split(",")
-            .map((n) => parseInt(n.trim()));
-        }
-        if (styleMatch) bestBuild.runes.primaryTree = parseInt(styleMatch[1]);
-        if (subStyleMatch)
-          bestBuild.runes.secondaryTree = parseInt(subStyleMatch[1]);
-
-        // 5. Extract Items
-        // Reset items
-        bestBuild.items.starter = [];
-        bestBuild.items.core = [];
-        bestBuild.items.situational = [];
-        bestBuild.items.boots = 0;
-
-        const starterMatch = chunk.match(
-          /"type":"Starter"[^}]*"items":\[([\d,]+)\]/
-        );
-        const earlyMatch = chunk.match(
-          /"type":"Early"[^}]*"items":\[([\d,]+)\]/
-        );
-        const coreMatch = chunk.match(/"type":"Core"[^}]*"items":\[([\d,]+)\]/);
-        const fullBuildMatch = chunk.match(
-          /"type":"FullBuild"[^}]*"items":\[([\d,]+)\]/
-        );
-
-        if (starterMatch) {
-          starterMatch[1]
-            .split(",")
-            .forEach((n) => bestBuild.items.starter.push(parseInt(n.trim())));
-        }
-
-        if (earlyMatch) {
-          earlyMatch[1]
-            .split(",")
-            .forEach((n) => bestBuild.items.early.push(parseInt(n.trim())));
-        }
-
-        if (coreMatch) {
-          coreMatch[1].split(",").forEach((n) => {
-            const id = parseInt(n.trim());
-            const bootsIds = [3006, 3009, 3020, 3047, 3111, 3117, 3158]; // Common boots
-            if (bootsIds.includes(id)) {
-              bestBuild.items.boots = id;
-            } else {
-              bestBuild.items.core.push(id);
-            }
-          });
-        }
-
-        if (fullBuildMatch) {
-          fullBuildMatch[1]
-            .split(",")
-            .forEach((n) =>
-              bestBuild.items.situational.push(parseInt(n.trim()))
-            );
-        }
+      if (perksIDsMatch) {
+        build.runes.perks = perksIDsMatch[1]
+          .split(",")
+          .map((n) => parseInt(n.trim()));
       }
+      if (styleMatch) build.runes.primaryTree = parseInt(styleMatch[1]);
+      if (subStyleMatch) build.runes.secondaryTree = parseInt(subStyleMatch[1]);
+
+      const starterMatch = chunk.match(
+        /"type":"Starter"[^}]*"items":\[([\d,]+)\]/,
+      );
+      const earlyMatch = chunk.match(/"type":"Early"[^}]*"items":\[([\d,]+)\]/);
+      const coreMatch = chunk.match(/"type":"Core"[^}]*"items":\[([\d,]+)\]/);
+      const fullBuildMatch = chunk.match(
+        /"type":"FullBuild"[^}]*"items":\[([\d,]+)\]/,
+      );
+
+      if (starterMatch) {
+        build.items.starter = starterMatch[1]
+          .split(",")
+          .map((n) => parseInt(n.trim()));
+      }
+      if (earlyMatch) {
+        build.items.early = earlyMatch[1]
+          .split(",")
+          .map((n) => parseInt(n.trim()));
+      }
+      if (coreMatch) {
+        const bootsIds = [3006, 3009, 3020, 3047, 3111, 3117, 3158];
+        coreMatch[1].split(",").forEach((n) => {
+          const id = parseInt(n.trim());
+          if (bootsIds.includes(id)) {
+            build.items.boots = id;
+          } else {
+            build.items.core.push(id);
+          }
+        });
+      }
+      if (fullBuildMatch) {
+        build.items.situational = fullBuildMatch[1]
+          .split(",")
+          .map((n) => parseInt(n.trim()));
+      }
+
+      allBuilds.push(build);
     }
 
-    if (bestBuild.matchCountNum === -1) {
-      console.log("[Mobalytics] No valid build stats found");
-      return null;
+    if (allBuilds.length === 0) {
+      console.log("[Mobalytics] No valid builds found");
+      return [];
     }
 
-    console.log(
-      `[Mobalytics] Selected Best Build - Role: ${bestBuild.role}, WinRate: ${bestBuild.winRate}, Matches: ${bestBuild.matchCountStr}`
-    );
+    // Sort by match count (popularity) and take top 3
+    allBuilds.sort((a, b) => b.matchCountNum - a.matchCountNum);
+    const topBuilds = allBuilds.slice(0, 3);
 
-    return {
+    // Debug: Log each build's item counts
+    topBuilds.forEach((b, i) => {
+      console.log(
+        `[Mobalytics] Build ${i + 1}: WR=${b.winRate}, Matches=${b.matchCountNum}, Starter=${b.items.starter.length}, Core=${b.items.core.length}, Early=${b.items.early.length}, Sit=${b.items.situational.length}`,
+      );
+    });
+
+    console.log(`[Mobalytics] Returning ${topBuilds.length} builds`);
+
+    return topBuilds.map((b) => ({
       success: true,
       championName: "",
-      role: bestBuild.role,
-      winRate: bestBuild.winRate,
-      matchCount: bestBuild.matchCountStr,
-      items: bestBuild.items,
-      runes: bestBuild.runes,
-      spells: bestBuild.spells,
-    };
+      role: b.role,
+      winRate: b.winRate,
+      matchCount: b.matchCountStr,
+      items: b.items,
+      runes: b.runes,
+      spells: b.spells,
+    }));
   } catch (error) {
     console.error("[Mobalytics] Error extracting state:", error);
-    return null;
+    return [];
   }
 }
 
@@ -253,7 +222,7 @@ function extractBuildFromState(html: string): MobalyticsBuildData | null {
  */
 export async function fetchMobalyticsBuild(
   champion: string,
-  role?: string
+  role?: string,
 ): Promise<MobalyticsBuildData> {
   const cleanName = champion.toLowerCase().replace(/[^a-z0-9]/g, "");
 
@@ -284,7 +253,11 @@ export async function fetchMobalyticsBuild(
   console.log(`[Mobalytics]    ${url}`);
 
   try {
-    const { data: html, status, request } = await axios.get(url, {
+    const {
+      data: html,
+      status,
+      request,
+    } = await axios.get(url, {
       headers: {
         "User-Agent":
           "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
@@ -307,25 +280,27 @@ export async function fetchMobalyticsBuild(
     const $ = cheerio.load(html);
     const pageText = $("body").text().toLowerCase();
     const titleText = $("title").text().toLowerCase();
-    
+
     console.log(`[Mobalytics] 📄 Page title: ${$("title").text()}`);
-    console.log(`[Mobalytics] 📄 Body preview: ${pageText.substring(0, 200)}...`);
-    
+    console.log(
+      `[Mobalytics] 📄 Body preview: ${pageText.substring(0, 200)}...`,
+    );
+
     // First, try to extract from preloaded state (even if status is 404, sometimes data exists)
-    const buildData = extractBuildFromState(html);
-    
-    // If we got valid build data, use it regardless of status code
-    if (
-      buildData &&
-      (buildData.items.core.length > 0 || buildData.runes.perks.length > 0)
-    ) {
+    const builds = extractBuildFromState(html);
+
+    // If we got valid build data, use the first one (most popular) for backward compatibility
+    if (builds.length > 0 && builds[0].items.core.length > 0) {
+      const buildData = builds[0];
       buildData.championName = champion;
-      console.log(`[Mobalytics] ✅ Build extracted successfully (status: ${status})`);
+      console.log(
+        `[Mobalytics] ✅ Build extracted successfully (status: ${status})`,
+      );
       return buildData;
     }
 
     // If no build data found, check if it's a 404 page
-    const is404Page = 
+    const is404Page =
       status === 404 ||
       pageText.includes("looks like you are lost") ||
       pageText.includes("page not found") ||
@@ -335,7 +310,9 @@ export async function fetchMobalyticsBuild(
 
     if (is404Page) {
       const roleText = role ? ` สำหรับตำแหน่ง ${role}` : "";
-      console.log(`[Mobalytics] ❌ 404 - ไม่พบข้อมูล Build สำหรับ ${champion}${roleText}`);
+      console.log(
+        `[Mobalytics] ❌ 404 - ไม่พบข้อมูล Build สำหรับ ${champion}${roleText}`,
+      );
       return {
         success: false,
         championName: champion,
@@ -352,8 +329,12 @@ export async function fetchMobalyticsBuild(
     // If we reach here, no build data was found and it's not a clear 404 page
     // This might mean the page loaded but has no build data for this role
     const roleText = role ? ` สำหรับตำแหน่ง ${role}` : "";
-    console.log(`[Mobalytics] ❌ ไม่พบข้อมูล Build ในหน้าเว็บสำหรับ ${champion}${roleText}`);
-    console.log(`[Mobalytics]    Status: ${status}, __PRELOADED_STATE__: ${html.includes("__PRELOADED_STATE__") ? "found" : "not found"}, BuildData: ${buildData ? "extracted but empty" : "not extracted"}`);
+    console.log(
+      `[Mobalytics] ❌ ไม่พบข้อมูล Build ในหน้าเว็บสำหรับ ${champion}${roleText}`,
+    );
+    console.log(
+      `[Mobalytics]    Status: ${status}, __PRELOADED_STATE__: ${html.includes("__PRELOADED_STATE__") ? "found" : "not found"}, Builds: ${builds.length > 0 ? "extracted but empty" : "not extracted"}`,
+    );
     return {
       success: false,
       championName: champion,
@@ -371,21 +352,29 @@ export async function fetchMobalyticsBuild(
       const status = error.response.status;
       if (status === 404 || status === 403) {
         const roleText = role ? ` สำหรับตำแหน่ง ${role}` : "";
-        console.log(`[Mobalytics] ❌ ${status} - ไม่พบข้อมูล Build สำหรับ ${champion}${roleText}`);
+        console.log(
+          `[Mobalytics] ❌ ${status} - ไม่พบข้อมูล Build สำหรับ ${champion}${roleText}`,
+        );
         return {
           success: false,
           championName: champion,
           role: role || "Unknown",
           winRate: "N/A",
           matchCount: "N/A",
-          items: { starter: [], early: [], core: [], boots: 0, situational: [] },
+          items: {
+            starter: [],
+            early: [],
+            core: [],
+            boots: 0,
+            situational: [],
+          },
           runes: { primaryTree: 0, secondaryTree: 0, perks: [] },
           spells: [],
           error: `ไม่พบข้อมูล Build สำหรับ "${champion}"${roleText ? ` ในตำแหน่ง ${role}` : ""}`,
         };
       }
     }
-    
+
     console.error(`[Mobalytics] ❌ Failed to fetch ${champion}:`, error);
     return {
       success: false,
@@ -402,17 +391,74 @@ export async function fetchMobalyticsBuild(
 }
 
 /**
+ * Fetch multiple builds (up to 3) from Mobalytics for build selection
+ */
+export async function fetchMultipleMobalyticsBuilds(
+  champion: string,
+  role?: string,
+): Promise<MobalyticsBuildData[]> {
+  const cleanName = champion.toLowerCase().replace(/[^a-z0-9]/g, "");
+
+  const ROLE_MAP: Record<string, string> = {
+    top: "top",
+    jungle: "jungle",
+    mid: "mid",
+    middle: "mid",
+    adc: "adc",
+    bottom: "adc",
+    bot: "adc",
+    support: "support",
+    sup: "support",
+  };
+
+  let url = `https://mobalytics.gg/lol/champions/${cleanName}/build`;
+  if (role) {
+    const slug = ROLE_MAP[role.toLowerCase()];
+    if (slug) url += `/${slug}`;
+  }
+
+  console.log(`[Mobalytics] 🌐 Fetching multiple builds from: ${url}`);
+
+  try {
+    const { data: html } = await axios.get(url, {
+      headers: {
+        "User-Agent":
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+        Accept: "text/html,application/xhtml+xml",
+      },
+      validateStatus: (s) => s < 500,
+    });
+
+    const builds = extractBuildFromState(html);
+
+    if (builds.length > 0) {
+      builds.forEach((b) => (b.championName = champion));
+      console.log(
+        `[Mobalytics] ✅ Found ${builds.length} builds for ${champion}`,
+      );
+      return builds;
+    }
+
+    console.log(`[Mobalytics] ❌ No builds found for ${champion}`);
+    return [];
+  } catch (error) {
+    console.error(`[Mobalytics] ❌ Error fetching multiple builds:`, error);
+    return [];
+  }
+}
+
+/**
  * Fetch counter/matchup data from Mobalytics
  */
 export async function fetchMobalyticsCounters(
-  champion: string
+  champion: string,
 ): Promise<MobalyticsCounterData> {
   const cleanName = champion.toLowerCase().replace(/[^a-z0-9]/g, "");
   // Fetch from the dedicated counters page
   const url = `https://mobalytics.gg/lol/champions/${cleanName}/counters`;
 
-    console.log(`[Mobalytics] 🌐 Fetching counters from:`);
-    console.log(`[Mobalytics]    ${url}`);
+  console.log(`[Mobalytics] 🌐 Fetching counters from:`);
+  console.log(`[Mobalytics]    ${url}`);
 
   try {
     const { data: html } = await axios.get(url, {
@@ -425,7 +471,7 @@ export async function fetchMobalyticsCounters(
     });
 
     const stateMatch = html.match(
-      /window\.__PRELOADED_STATE__\s*=\s*(\{[\s\S]*?\});?\s*<\/script>/
+      /window\.__PRELOADED_STATE__\s*=\s*(\{[\s\S]*?\});?\s*<\/script>/,
     );
 
     if (!stateMatch) {
@@ -457,7 +503,7 @@ export async function fetchMobalyticsCounters(
       // Step 1: Find the LolChampion key for this champion
       const championKey = Object.keys(dynamic).find(
         (k) =>
-          k.startsWith("LolChampion:") && k.includes(`"slug":"${cleanName}"`)
+          k.startsWith("LolChampion:") && k.includes(`"slug":"${cleanName}"`),
       );
 
       console.log(`[Mobalytics] Champion key found: ${!!championKey}`);
@@ -467,19 +513,19 @@ export async function fetchMobalyticsCounters(
         const championDataKeys = Object.keys(championData);
 
         console.log(
-          `[Mobalytics] Champion data keys: ${championDataKeys.length}`
+          `[Mobalytics] Champion data keys: ${championDataKeys.length}`,
         );
 
         // Step 2: Find countersOptions keys within champion data
         const hardKey = championDataKeys.find(
-          (k) => k.includes("countersOptions") && k.includes("DESC")
+          (k) => k.includes("countersOptions") && k.includes("DESC"),
         );
         const easyKey = championDataKeys.find(
-          (k) => k.includes("countersOptions") && k.includes("ASC")
+          (k) => k.includes("countersOptions") && k.includes("ASC"),
         );
 
         console.log(
-          `[Mobalytics] Counter keys - Hard: ${!!hardKey}, Easy: ${!!easyKey}`
+          `[Mobalytics] Counter keys - Hard: ${!!hardKey}, Easy: ${!!easyKey}`,
         );
 
         const processList = (key: string | undefined) => {
@@ -531,7 +577,7 @@ export async function fetchMobalyticsCounters(
     }
 
     console.log(
-      `[Mobalytics] ✅ Counters fetched - Best: ${bestMatchups.length}, Worst: ${worstMatchups.length}`
+      `[Mobalytics] ✅ Counters fetched - Best: ${bestMatchups.length}, Worst: ${worstMatchups.length}`,
     );
 
     return {
@@ -543,7 +589,7 @@ export async function fetchMobalyticsCounters(
   } catch (error) {
     console.error(
       `[Mobalytics] ❌ Failed to fetch counters for ${champion}:`,
-      error
+      error,
     );
     return {
       success: false,

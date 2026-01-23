@@ -22,7 +22,7 @@ export async function generateBuildImage(
   championName: string,
   buildData: any, // Pass full build object
   version: string,
-  stats: { winRate: string; pickRate: string; role: string }
+  stats: { winRate: string; pickRate: string; role: string },
 ): Promise<AttachmentBuilder | null> {
   try {
     const startTime = Date.now();
@@ -35,7 +35,7 @@ export async function generateBuildImage(
       0,
       0,
       CANVAS_WIDTH,
-      CANVAS_HEIGHT
+      CANVAS_HEIGHT,
     );
     gradient.addColorStop(0, "#11131f");
     gradient.addColorStop(1, "#0a0b12");
@@ -44,16 +44,18 @@ export async function generateBuildImage(
 
     // -- Header --
     // Sanitize champion name for URL (remove spaces, special chars)
-    const formattedName = championName.replace(/\s+/g, "").replace(/[^a-zA-Z0-9]/g, "");
+    const formattedName = championName
+      .replace(/\s+/g, "")
+      .replace(/[^a-zA-Z0-9]/g, "");
     if (!formattedName) {
       console.error(`[ImageGen] ❌ Invalid champion name: "${championName}"`);
       return null;
     }
-    
+
     const champUrl = `https://ddragon.leagueoflegends.com/cdn/img/champion/splash/${formattedName}_0.jpg`;
     const HEADER_H = 220;
     let headerImageLoaded = false;
-    
+
     try {
       const champImg = await loadImage(champUrl);
       const w = CANVAS_WIDTH;
@@ -68,15 +70,23 @@ export async function generateBuildImage(
         0,
         0,
         w,
-        HEADER_H
+        HEADER_H,
       );
       headerImageLoaded = true;
     } catch (error: any) {
       // If champion image fails to load (403, 404, etc.), it might mean champion doesn't exist
       const errorMsg = error?.message || String(error);
-      if (errorMsg.includes("403") || errorMsg.includes("404") || errorMsg.includes("rejected")) {
-        console.error(`[ImageGen] ❌ Champion image not found (403/404): ${champUrl}`);
-        console.error(`[ImageGen] ❌ This might mean the champion "${championName}" doesn't exist or build data is invalid`);
+      if (
+        errorMsg.includes("403") ||
+        errorMsg.includes("404") ||
+        errorMsg.includes("rejected")
+      ) {
+        console.error(
+          `[ImageGen] ❌ Champion image not found (403/404): ${champUrl}`,
+        );
+        console.error(
+          `[ImageGen] ❌ This might mean the champion "${championName}" doesn't exist or build data is invalid`,
+        );
         return null; // Return null to indicate failure
       }
       // For other errors, log but continue (might be network issue)
@@ -105,7 +115,7 @@ export async function generateBuildImage(
     ctx.fillText(
       `${stats.role}  |  Win: ${stats.winRate}  |  Pick: ${stats.pickRate}`,
       PADDING + 24,
-      160
+      160,
     );
     ctx.restore();
 
@@ -126,9 +136,11 @@ export async function generateBuildImage(
       items: number[],
       x: number,
       y: number,
-      scale = 64
+      scale = 64,
     ) => {
-      if (!items || items.length === 0) return;
+      // Filter out invalid item IDs (0, undefined, null)
+      const validItems = items?.filter((id) => id && id > 0) || [];
+      if (validItems.length === 0) return;
       ctx.fillStyle = "#c8aa6e";
       ctx.font = "bold 24px Sans";
       ctx.fillText(title, x, y);
@@ -138,11 +150,13 @@ export async function generateBuildImage(
 
       // Parallel Load
       await Promise.all(
-        items.map(async (id, index) => {
+        validItems.map(async (id, index) => {
           const cx = x + index * (scale + GAP);
           const url = getItemImageUrl(version, id);
           if (!url || !url.startsWith("http")) {
-            console.warn(`[ImageGen] ⚠️  Invalid item URL for item ${id}: ${url}`);
+            console.warn(
+              `[ImageGen] ⚠️  Invalid item URL for item ${id}: ${url}`,
+            );
             return;
           }
           try {
@@ -160,11 +174,13 @@ export async function generateBuildImage(
           } catch (error: any) {
             const errorMsg = error?.message || String(error);
             if (errorMsg.includes("403") || errorMsg.includes("404")) {
-              console.warn(`[ImageGen] ⚠️  Item image not found (403/404): ${url}`);
+              console.warn(
+                `[ImageGen] ⚠️  Item image not found (403/404): ${url}`,
+              );
             }
             // Continue without this item image
           }
-        })
+        }),
       );
     };
 
@@ -204,14 +220,14 @@ export async function generateBuildImage(
         "Starter Items",
         buildData.startingItems,
         LEFT_COL_X,
-        ITEM_Y_START
+        ITEM_Y_START,
       ),
       // 2. Early Items
       drawItemSection(
         "Early Items",
         buildData.earlyItems,
         LEFT_COL_X,
-        ITEM_Y_START + SECTION_GAP
+        ITEM_Y_START + SECTION_GAP,
       ),
       // 3. Core Items
       drawItemSection(
@@ -219,14 +235,14 @@ export async function generateBuildImage(
         buildData.coreItems,
         LEFT_COL_X,
         ITEM_Y_START + SECTION_GAP * 2,
-        64 // scale
+        64, // scale
       ),
       // 4. Full Build (was Situational)
       drawItemSection(
         "Full Build",
         buildData.situationalItems,
         LEFT_COL_X,
-        ITEM_Y_START + SECTION_GAP * 3.5 // Give more space for Core if needed
+        ITEM_Y_START + SECTION_GAP * 3.5, // Give more space for Core if needed
       ),
     ]);
 
@@ -257,7 +273,7 @@ export async function generateBuildImage(
       "Boots",
       [buildData.boots],
       LEFT_COL_X + 300, // Offset to right of Starter
-      ITEM_Y_START
+      ITEM_Y_START,
     );
 
     // ================= RIGHT PANEL: RUNES =================
@@ -278,7 +294,7 @@ export async function generateBuildImage(
       y: number,
       size: number,
       active: boolean,
-      isKeystone = false
+      isKeystone = false,
     ) => {
       try {
         const img = await loadImage(url);
@@ -311,7 +327,7 @@ export async function generateBuildImage(
 
     // Primary Tree
     const primaryTree = runeData.find(
-      (t: any) => t.id === buildData.runesPrimary
+      (t: any) => t.id === buildData.runesPrimary,
     );
     if (primaryTree) {
       const PX = RUNE_START_X;
@@ -326,8 +342,8 @@ export async function generateBuildImage(
           PX + 60,
           PY,
           48,
-          true
-        )
+          true,
+        ),
       );
 
       let rowY = PY + 70;
@@ -349,9 +365,9 @@ export async function generateBuildImage(
               currentRowY,
               size,
               isActive,
-              i === 0 && currentRowY === PY + 70
+              i === 0 && currentRowY === PY + 70,
             );
-          })
+          }),
         );
 
         rowY += 65;
@@ -361,7 +377,7 @@ export async function generateBuildImage(
 
     // Secondary Tree
     const secondaryTree = runeData.find(
-      (t: any) => t.id === buildData.runesSecondary
+      (t: any) => t.id === buildData.runesSecondary,
     );
     if (secondaryTree) {
       const SX = RUNE_START_X + 260;
@@ -376,8 +392,8 @@ export async function generateBuildImage(
           SX + 60,
           SY,
           48,
-          true
-        )
+          true,
+        ),
       );
 
       let rowY = SY + 70;
@@ -399,9 +415,9 @@ export async function generateBuildImage(
               startX + i * (size + gap),
               currentRowY,
               size,
-              isActive
+              isActive,
             );
-          })
+          }),
         );
         rowY += 65;
       }
@@ -540,7 +556,7 @@ export async function generateBuildImage(
             ctx.fillStyle = isActive ? "#c8aa6e" : "#555";
             ctx.fill();
           }
-        })
+        }),
       );
     }
     await Promise.all(shardTasks);
@@ -562,16 +578,18 @@ export async function generateCounterImage(
   championName: string,
   bestMatchups: { name: string; winRate: string; games: string }[],
   worstMatchups: { name: string; winRate: string; games: string }[],
-  version: string
+  version: string,
 ): Promise<AttachmentBuilder | null> {
   try {
     const startTime = Date.now();
-    console.log(`[ImageGen] 🎨 Starting counter image generation for ${championName}...`);
-    
+    console.log(
+      `[ImageGen] 🎨 Starting counter image generation for ${championName}...`,
+    );
+
     const COUNTER_CANVAS_WIDTH = 1400;
     const COUNTER_CANVAS_HEIGHT = 1000;
     const COUNTER_PADDING = 40;
-    
+
     const canvas = createCanvas(COUNTER_CANVAS_WIDTH, COUNTER_CANVAS_HEIGHT);
     const ctx = canvas.getContext("2d");
 
@@ -580,7 +598,7 @@ export async function generateCounterImage(
       0,
       0,
       COUNTER_CANVAS_WIDTH,
-      COUNTER_CANVAS_HEIGHT
+      COUNTER_CANVAS_HEIGHT,
     );
     gradient.addColorStop(0, "#1a1b26");
     gradient.addColorStop(1, "#0f1016");
@@ -588,15 +606,17 @@ export async function generateCounterImage(
     ctx.fillRect(0, 0, COUNTER_CANVAS_WIDTH, COUNTER_CANVAS_HEIGHT);
 
     // -- Header --
-    const formattedName = championName.replace(/\s+/g, "").replace(/[^a-zA-Z0-9]/g, "");
+    const formattedName = championName
+      .replace(/\s+/g, "")
+      .replace(/[^a-zA-Z0-9]/g, "");
     if (!formattedName) {
       console.error(`[ImageGen] ❌ Invalid champion name: "${championName}"`);
       return null;
     }
-    
+
     const champUrl = `https://ddragon.leagueoflegends.com/cdn/img/champion/splash/${formattedName}_0.jpg`;
     const HEADER_H = 200;
-    
+
     try {
       const champImg = await loadImage(champUrl);
       const w = COUNTER_CANVAS_WIDTH;
@@ -610,12 +630,18 @@ export async function generateCounterImage(
         0,
         0,
         w,
-        HEADER_H
+        HEADER_H,
       );
     } catch (error: any) {
       const errorMsg = error?.message || String(error);
-      if (errorMsg.includes("403") || errorMsg.includes("404") || errorMsg.includes("rejected")) {
-        console.error(`[ImageGen] ❌ Champion image not found (403/404): ${champUrl}`);
+      if (
+        errorMsg.includes("403") ||
+        errorMsg.includes("404") ||
+        errorMsg.includes("rejected")
+      ) {
+        console.error(
+          `[ImageGen] ❌ Champion image not found (403/404): ${champUrl}`,
+        );
         return null;
       }
       console.warn(`[ImageGen] ⚠️  Failed to load champion image: ${errorMsg}`);
@@ -676,14 +702,20 @@ export async function generateCounterImage(
     ctx.fillStyle = "#a09b8c";
     ctx.fillText("(You counter them)", COUNTER_PADDING + 38, contentY + 52);
     ctx.restore();
-    
+
     // Hard Matchups Title (Red) - You Lose
     ctx.save();
     ctx.font = "bold 30px Sans";
     ctx.fillStyle = "#f87171";
     // Draw red circle icon
     ctx.beginPath();
-    ctx.arc(separatorX + COUNTER_PADDING + 16, contentY + 22, 12, 0, Math.PI * 2);
+    ctx.arc(
+      separatorX + COUNTER_PADDING + 16,
+      contentY + 22,
+      12,
+      0,
+      Math.PI * 2,
+    );
     ctx.fill();
     // Draw X
     ctx.strokeStyle = "#1a1b26";
@@ -694,10 +726,18 @@ export async function generateCounterImage(
     ctx.moveTo(separatorX + COUNTER_PADDING + 22, contentY + 16);
     ctx.lineTo(separatorX + COUNTER_PADDING + 10, contentY + 28);
     ctx.stroke();
-    ctx.fillText("Hard Matchups", separatorX + COUNTER_PADDING + 38, contentY + 30);
+    ctx.fillText(
+      "Hard Matchups",
+      separatorX + COUNTER_PADDING + 38,
+      contentY + 30,
+    );
     ctx.font = "16px Sans";
     ctx.fillStyle = "#a09b8c";
-    ctx.fillText("(They counter you)", separatorX + COUNTER_PADDING + 38, contentY + 52);
+    ctx.fillText(
+      "(They counter you)",
+      separatorX + COUNTER_PADDING + 38,
+      contentY + 52,
+    );
     ctx.restore();
 
     // -- Champion Images and Names --
@@ -709,14 +749,14 @@ export async function generateCounterImage(
 
     // Get champion data to map names correctly
     const championData = await getChampionData(version);
-    
+
     // Helper function to find correct champion name from DDragon data
     const findChampionName = (name: string): string | null => {
       // First try exact match
       if (championData[name]) {
         return name;
       }
-      
+
       // Try case-insensitive match
       const lowerName = name.toLowerCase();
       for (const key in championData) {
@@ -724,7 +764,7 @@ export async function generateCounterImage(
           return key;
         }
       }
-      
+
       // Try matching by display name
       for (const key in championData) {
         const champ = championData[key];
@@ -732,7 +772,7 @@ export async function generateCounterImage(
           return key; // Return the ID (key)
         }
       }
-      
+
       // Try fuzzy matching (remove spaces, special chars)
       const normalized = name.replace(/[^a-zA-Z0-9]/g, "").toLowerCase();
       for (const key in championData) {
@@ -743,13 +783,15 @@ export async function generateCounterImage(
         // Also check display name
         const champ = championData[key];
         if (champ.name) {
-          const champNormalized = champ.name.replace(/[^a-zA-Z0-9]/g, "").toLowerCase();
+          const champNormalized = champ.name
+            .replace(/[^a-zA-Z0-9]/g, "")
+            .toLowerCase();
           if (champNormalized === normalized) {
             return key;
           }
         }
       }
-      
+
       return null;
     };
 
@@ -759,33 +801,45 @@ export async function generateCounterImage(
         // Find correct champion ID from DDragon data
         const championId = findChampionName(championName);
         if (!championId) {
-          console.warn(`[ImageGen] ⚠️  Could not find champion "${championName}" in DDragon data`);
+          console.warn(
+            `[ImageGen] ⚠️  Could not find champion "${championName}" in DDragon data`,
+          );
           return null;
         }
-        
+
         // Use champion ID directly for image URL (DDragon format: champion ID.png)
         // Don't use getChampionImageUrl as it sanitizes, we need exact ID
         const champImageUrl = `https://ddragon.leagueoflegends.com/cdn/${version}/img/champion/${championId}.png`;
         if (champImageUrl && champImageUrl.startsWith("http")) {
           try {
             const img = await loadImage(champImageUrl);
-            console.log(`[ImageGen] ✅ Loaded image for "${championName}" -> "${championId}"`);
+            console.log(
+              `[ImageGen] ✅ Loaded image for "${championName}" -> "${championId}"`,
+            );
             return img;
           } catch (error: any) {
             const errorMsg = error?.message || String(error);
             if (errorMsg.includes("403") || errorMsg.includes("404")) {
-              console.warn(`[ImageGen] ⚠️  Image not found (403/404) for "${championName}" (ID: "${championId}"): ${champImageUrl}`);
+              console.warn(
+                `[ImageGen] ⚠️  Image not found (403/404) for "${championName}" (ID: "${championId}"): ${champImageUrl}`,
+              );
             } else {
-              console.warn(`[ImageGen] ⚠️  Failed to load image for "${championName}" (ID: "${championId}"): ${errorMsg}`);
+              console.warn(
+                `[ImageGen] ⚠️  Failed to load image for "${championName}" (ID: "${championId}"): ${errorMsg}`,
+              );
             }
             return null;
           }
         } else {
-          console.warn(`[ImageGen] ⚠️  Invalid image URL for "${championName}" (ID: "${championId}")`);
+          console.warn(
+            `[ImageGen] ⚠️  Invalid image URL for "${championName}" (ID: "${championId}")`,
+          );
           return null;
         }
       } catch (error: any) {
-        console.warn(`[ImageGen] ⚠️  Error loading image for "${championName}": ${error?.message || String(error)}`);
+        console.warn(
+          `[ImageGen] ⚠️  Error loading image for "${championName}": ${error?.message || String(error)}`,
+        );
         return null;
       }
     };
@@ -793,12 +847,12 @@ export async function generateCounterImage(
     // Load all images in parallel
     const easyList = bestMatchups.slice(0, maxChampions);
     const hardList = worstMatchups.slice(0, maxChampions);
-    
+
     const easyImages = await Promise.all(
-      easyList.map(champ => loadChampionImage(champ.name))
+      easyList.map((champ) => loadChampionImage(champ.name)),
     );
     const hardImages = await Promise.all(
-      hardList.map(champ => loadChampionImage(champ.name))
+      hardList.map((champ) => loadChampionImage(champ.name)),
     );
 
     // Helper function to draw champion with pre-loaded image
@@ -808,14 +862,20 @@ export async function generateCounterImage(
       champion: { name: string; winRate: string },
       index: number,
       isEasy: boolean,
-      champImg: any
+      champImg: any,
     ) => {
       const rankNum = index + 1;
-      
+
       // Draw circle background with colored border for top 3
       ctx.save();
       ctx.beginPath();
-      ctx.arc(x + championSize / 2, y + championSize / 2, championSize / 2 + 4, 0, Math.PI * 2);
+      ctx.arc(
+        x + championSize / 2,
+        y + championSize / 2,
+        championSize / 2 + 4,
+        0,
+        Math.PI * 2,
+      );
       if (rankNum <= 3) {
         // Gold, Silver, Bronze borders for top 3
         const borderColors = ["#FFD700", "#C0C0C0", "#CD7F32"];
@@ -823,15 +883,23 @@ export async function generateCounterImage(
         ctx.lineWidth = 4;
         ctx.stroke();
       }
-      ctx.fillStyle = isEasy ? "rgba(74, 222, 128, 0.15)" : "rgba(248, 113, 113, 0.15)";
+      ctx.fillStyle = isEasy
+        ? "rgba(74, 222, 128, 0.15)"
+        : "rgba(248, 113, 113, 0.15)";
       ctx.fill();
       ctx.restore();
-      
+
       if (champImg) {
         // Draw champion image (circular)
         ctx.save();
         ctx.beginPath();
-        ctx.arc(x + championSize / 2, y + championSize / 2, championSize / 2, 0, Math.PI * 2);
+        ctx.arc(
+          x + championSize / 2,
+          y + championSize / 2,
+          championSize / 2,
+          0,
+          Math.PI * 2,
+        );
         ctx.clip();
         ctx.drawImage(champImg, x, y, championSize, championSize);
         ctx.restore();
@@ -839,7 +907,13 @@ export async function generateCounterImage(
         // Fallback: draw placeholder circle
         ctx.save();
         ctx.beginPath();
-        ctx.arc(x + championSize / 2, y + championSize / 2, championSize / 2, 0, Math.PI * 2);
+        ctx.arc(
+          x + championSize / 2,
+          y + championSize / 2,
+          championSize / 2,
+          0,
+          Math.PI * 2,
+        );
         ctx.fillStyle = "#3c3c41";
         ctx.fill();
         ctx.strokeStyle = isEasy ? "#4ade80" : "#f87171";
@@ -853,10 +927,16 @@ export async function generateCounterImage(
       const badgeSize = 28;
       const badgeX = x - 5;
       const badgeY = y - 5;
-      
+
       // Badge background with color based on rank
       ctx.beginPath();
-      ctx.arc(badgeX + badgeSize / 2, badgeY + badgeSize / 2, badgeSize / 2, 0, Math.PI * 2);
+      ctx.arc(
+        badgeX + badgeSize / 2,
+        badgeY + badgeSize / 2,
+        badgeSize / 2,
+        0,
+        Math.PI * 2,
+      );
       if (rankNum === 1) {
         ctx.fillStyle = "#FFD700"; // Gold
       } else if (rankNum === 2) {
@@ -867,13 +947,17 @@ export async function generateCounterImage(
         ctx.fillStyle = "#4a4a4a"; // Gray for others
       }
       ctx.fill();
-      
+
       // Draw rank number
       ctx.font = "bold 16px Sans";
       ctx.fillStyle = rankNum <= 3 ? "#000000" : "#ffffff";
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
-      ctx.fillText(rankNum.toString(), badgeX + badgeSize / 2, badgeY + badgeSize / 2);
+      ctx.fillText(
+        rankNum.toString(),
+        badgeX + badgeSize / 2,
+        badgeY + badgeSize / 2,
+      );
       ctx.restore();
 
       // Draw champion name below image
@@ -887,24 +971,30 @@ export async function generateCounterImage(
       const maxNameWidth = championSize + 40;
       ctx.font = "bold 16px Sans";
       if (ctx.measureText(displayName).width > maxNameWidth) {
-        while (ctx.measureText(displayName + "...").width > maxNameWidth && displayName.length > 0) {
+        while (
+          ctx.measureText(displayName + "...").width > maxNameWidth &&
+          displayName.length > 0
+        ) {
           displayName = displayName.slice(0, -1);
         }
         displayName += "...";
       }
       ctx.fillText(displayName, centerX, nameY);
       ctx.restore();
-      
+
       // Draw win rate below champion name
       ctx.save();
       ctx.font = "bold 18px Sans";
       ctx.textAlign = "center";
       const winRateText = champion.winRate || "N/A";
-      const displayWinRate = winRateText && winRateText !== "N/A" 
-        ? (winRateText.includes("%") ? winRateText : winRateText + "%")
-        : "N/A";
+      const displayWinRate =
+        winRateText && winRateText !== "N/A"
+          ? winRateText.includes("%")
+            ? winRateText
+            : winRateText + "%"
+          : "N/A";
       const winRateY = nameY + 22;
-      
+
       // Draw win rate text with color
       ctx.fillStyle = isEasy ? "#4ade80" : "#f87171";
       ctx.fillText(displayWinRate, centerX, winRateY);
