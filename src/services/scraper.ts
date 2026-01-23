@@ -8,7 +8,10 @@ import {
   ChallengerBuildResponse,
 } from "../types/riot.js";
 
-import { fetchMobalyticsBuild } from "./mobalytics.js";
+import {
+  fetchMobalyticsBuild,
+  fetchMultipleMobalyticsBuilds,
+} from "./mobalytics.js";
 import {
   getAvailableChampions as getStaticChampions,
   hasChampion as hasStaticChampion,
@@ -21,7 +24,7 @@ import {
  */
 export async function getAverageBuild(
   championName: string,
-  role?: string
+  role?: string,
 ): Promise<ChallengerBuildResponse> {
   try {
     const build = await fetchMobalyticsBuild(championName, role);
@@ -44,11 +47,11 @@ export async function getAverageBuild(
           primaryStyle: build.runes.primaryTree,
           primarySelections: build.runes.perks
             .slice(0, 4)
-            .map((id) => ({ perk: id } as any)),
+            .map((id) => ({ perk: id }) as any),
           secondaryStyle: build.runes.secondaryTree,
           secondarySelections: build.runes.perks
             .slice(4, 6)
-            .map((id) => ({ perk: id } as any)),
+            .map((id) => ({ perk: id }) as any),
           statPerks: {
             offense: build.runes.perks[6] || 0,
             flex: build.runes.perks[7] || 0,
@@ -95,6 +98,92 @@ export async function getAverageBuild(
     console.error("[Scraper] Error:", error);
     return {
       success: false,
+      error: error instanceof Error ? error.message : "Unknown error",
+    };
+  }
+}
+
+/**
+ * Get multiple build options for a champion
+ * Uses Mobalytics scraper (up to 3 builds)
+ */
+export async function getMultipleBuilds(
+  championName: string,
+  role?: string,
+): Promise<{
+  success: boolean;
+  builds: ChallengerBuildResult[];
+  error?: string;
+}> {
+  try {
+    const mobaBuilds = await fetchMultipleMobalyticsBuilds(championName, role);
+
+    if (mobaBuilds && mobaBuilds.length > 0) {
+      const results: ChallengerBuildResult[] = mobaBuilds.map(
+        (build, index) => ({
+          success: true,
+          playerName: `Build ${index + 1}`,
+          riotId: build.role,
+          region: "Global",
+          championName: championName,
+          championId: 0,
+          items: build.items.core,
+          earlyItems: build.items.starter,
+          runes: {
+            primaryStyle: build.runes.primaryTree,
+            primarySelections: build.runes.perks
+              .slice(0, 4)
+              .map((id) => ({ perk: id }) as any),
+            secondaryStyle: build.runes.secondaryTree,
+            secondarySelections: build.runes.perks
+              .slice(4)
+              .map((id) => ({ perk: id }) as any),
+            statPerks: { offense: 0, flex: 0, defense: 0 },
+          },
+          summonerSpells: {
+            spell1: build.spells[0] || 4,
+            spell2: build.spells[1] || 12,
+          },
+          kda: { kills: 0, deaths: 0, assists: 0, ratio: "N/A" },
+          win: true,
+          gameMode: build.role,
+          gameDuration: 0,
+          winRate: build.winRate,
+          pickRate: build.matchCount,
+          source: "Mobalytics",
+          buildData: {
+            championName: championName,
+            role: build.role,
+            startingItems: build.items.starter,
+            boots: build.items.boots,
+            coreItems: build.items.core,
+            situationalItems: build.items.situational,
+            runesPrimary: build.runes.primaryTree,
+            runesSecondary: build.runes.secondaryTree,
+            perks: build.runes.perks,
+            summonerSpell1: build.spells[0] || 4,
+            summonerSpell2: build.spells[1] || 12,
+            winRate: build.winRate,
+            pickRate: build.matchCount,
+            source: "Mobalytics",
+          },
+          perks: build.runes.perks,
+        }),
+      );
+
+      return { success: true, builds: results };
+    }
+
+    return {
+      success: false,
+      builds: [],
+      error: `ไม่พบข้อมูล Build สำหรับ "${championName}"`,
+    };
+  } catch (error) {
+    console.error("[Scraper] Error getting multiple builds:", error);
+    return {
+      success: false,
+      builds: [],
       error: error instanceof Error ? error.message : "Unknown error",
     };
   }
