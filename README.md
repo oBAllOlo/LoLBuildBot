@@ -6,6 +6,7 @@ Discord Bot สำหรับแนะนำวิธีการออกข�
 
 - **/build [champion] [role]** - ค้นหาการออกของ (Item Build), รูน (Runes) และเวท (Spells) จากสถิติผู้เล่นระดับสูง (Mobalytics)
 - **/counter [champion]** - ดูแชมเปี้ยนที่ชนะทาง หรือแชมเปี้ยนที่แพ้ทางตัวที่ระบุ
+- **/tier-list** - แสดง Tier List ของ Meta ปัจจุบัน (ทุกตำแหน่ง) พร้อมรูปภาพ
 - **/ping** - ตรวจสอบความเร็วในการตอบสนองของบอท
 - **Multi-Server Support** - รองรับการอัปเดตคำสั่งทันใจในหลาย Server พร้อมกัน
 - **Keep-Alive Server** - ระบบป้องกันบอทหลับ (ทำงานร่วมกับ UptimeRobot)
@@ -21,7 +22,6 @@ Discord Bot สำหรับแนะนำวิธีการออกข�
 ⚠️ **สำคัญ: เพื่อป้องกันไม่ให้บอททดสอบชนกับ production bot**
 
 1. **สร้างบอททดสอบแยกจาก production:**
-
    - ไปที่ [Discord Developer Portal](https://discord.com/developers/applications)
    - สร้าง Application ใหม่สำหรับทดสอบ (หรือใช้บอทที่มีอยู่แล้ว)
    - Copy Bot Token มาใช้
